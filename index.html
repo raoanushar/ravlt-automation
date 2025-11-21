@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Automated RAVLT Conductor</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div>
+          <p class="eyebrow">Clinical workflow helper</p>
+          <h1>Rey Auditory Verbal Learning Test - Guided Flow</h1>
+          <p class="lede">Each section below mirrors the official protocol. Read the printed prompt, press <strong>Start Listening</strong>, and the participant's recalled words will appear in real time.</p>
+        </div>
+        <div class="meta">
+          <span class="badge">Mic + Browser required</span>
+        </div>
+      </header>
+
+      <div id="speech-warning" class="warning hidden">
+        Your browser does not support the Web Speech API. The Start Listening buttons are disabled. Please use Chrome (desktop) for live capture.
+      </div>
+
+      <main id="stages" class="stage-grid"></main>
+
+    <section class="stage-card scoring-panel" id="scoring-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Scoring</p>
+          <h2>Trial-by-Trial Record</h2>
+        </div>
+      </div>
+      <div class="scoring-table-wrapper">
+        <table class="scoring-table">
+          <thead>
+            <tr>
+              <th rowspan="2">List A</th>
+              <th colspan="5">Trials 1-5</th>
+              <th rowspan="2">Trial 6 (List A)<br /><span class="subhead">Immediate Recall</span></th>
+              <th rowspan="2">Trial 7 (List A)<br /><span class="subhead">Delayed Recall</span></th>
+              <th rowspan="2">List B</th>
+              <th rowspan="2">List B Recall</th>
+            </tr>
+            <tr>
+              <th>T1</th>
+              <th>T2</th>
+              <th>T3</th>
+              <th>T4</th>
+              <th>T5</th>
+            </tr>
+          </thead>
+          <tbody id="scoring-body"></tbody>
+          <tfoot>
+            <tr class="summary-row">
+              <th>Total Recall</th>
+              <td data-total-stage="A1"></td>
+              <td data-total-stage="A2"></td>
+              <td data-total-stage="A3"></td>
+              <td data-total-stage="A4"></td>
+              <td data-total-stage="A5"></td>
+              <td data-total-stage="A6"></td>
+              <td data-total-stage="A7"></td>
+              <th>Total Recall (List B)</th>
+              <td data-total-stage="B1"></td>
+            </tr>
+            <tr class="summary-row">
+              <th>Intrusions</th>
+              <td data-intrusion-stage="A1"></td>
+              <td data-intrusion-stage="A2"></td>
+              <td data-intrusion-stage="A3"></td>
+              <td data-intrusion-stage="A4"></td>
+              <td data-intrusion-stage="A5"></td>
+              <td data-intrusion-stage="A6"></td>
+              <td data-intrusion-stage="A7"></td>
+              <th>Intrusions (List B)</th>
+              <td data-intrusion-stage="B1"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    </div>
+
+    <template id="stage-template">
+      <section class="stage-card">
+        <div class="stage-header">
+          <div>
+            <h2 class="stage-title"></h2>
+          </div>
+          <span class="status-badge">Idle</span>
+        </div>
+
+        <div class="instructions">
+          <p class="overview"></p>
+          <p class="prompt"></p>
+        </div>
+
+        <div class="timer-block">
+          <p class="eyebrow">Time remaining</p>
+          <span class="countdown">01:00</span>
+        </div>
+
+        <div class="delay-note hidden">
+          <p class="eyebrow">Delayed recall window</p>
+          <p class="note-text"></p>
+        </div>
+
+        <div class="word-bank hidden">
+          <p class="word-bank-title"></p>
+          <ul class="word-list"></ul>
+        </div>
+
+        <div class="controls">
+          <button class="primary" data-action="start">Start Listening</button>
+          <button class="ghost" data-action="finish">Finish</button>
+          <button class="ghost danger" data-action="reset">Reset Section</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div class="live-words"></div>
+        </div>
+
+        <div class="results hidden">
+          <p class="eyebrow">Scored responses</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Word</th>
+                <th>Classification</th>
+                <th>Recall order</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </template>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
