@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ECAS Naming Exercise - Automated</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div>
+          <p class="eyebrow">Clinical workflow helper</p>
+          <h1>ECAS Naming Exercise - Guided Flow</h1>
+          <p class="lede">
+            Show each picture, prompt the participant to name it aloud, and capture responses with Chrome's built-in speech recognition.
+          </p>
+        </div>
+        <div class="meta">
+          <span class="badge">Mic + Chrome required</span>
+        </div>
+      </header>
+
+      <div id="speech-warning" class="warning hidden">
+        Your browser does not support the Web Speech API. Use Google Chrome (desktop) and allow microphone access to capture responses.
+      </div>
+
+      <main class="content-grid">
+        <section class="stage-card">
+          <div class="stage-header">
+            <div>
+              <p class="eyebrow">Picture prompt</p>
+              <h2 id="item-title">Item 1 of 1</h2>
+              <p class="overview">Press Start Listening, show the picture, and wait for the participant to name it.</p>
+            </div>
+            <span class="status-badge" id="status-badge">Idle</span>
+          </div>
+
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="eyebrow">Progress</span>
+              <span id="progress-count" class="progress-count">1 / 1</span>
+            </div>
+            <div class="progress-bar">
+              <div id="progress-fill" class="progress-fill"></div>
+            </div>
+          </div>
+
+          <div class="image-frame">
+            <img id="prompt-image" src="" alt="Naming prompt" />
+          </div>
+
+          <div class="prompt-box">
+            <p class="eyebrow">What to say</p>
+            <p class="prompt">Show the image and ask: <em>"What is this called?"</em></p>
+            <p class="muted">Live transcription appears below once listening starts.</p>
+          </div>
+
+          <div class="controls">
+            <button class="primary" id="start-btn">Start Listening</button>
+            <button class="ghost" id="stop-btn">Stop &amp; Score</button>
+            <button class="ghost" id="next-btn">Next Item</button>
+            <button class="ghost danger" id="reset-btn">Reset Responses</button>
+          </div>
+
+          <div class="live-area" aria-live="polite">
+            <p class="eyebrow">Live transcription</p>
+            <div id="live-words" class="live-words"></div>
+          </div>
+
+          <div class="result-grid">
+            <div class="result-card">
+              <p class="eyebrow">Expected answer</p>
+              <p class="result-title" id="expected-label">--</p>
+              <p class="muted" id="expected-variants"></p>
+            </div>
+            <div class="result-card">
+              <p class="eyebrow">Match status</p>
+              <p class="result-title" id="match-status">No response yet</p>
+              <p class="muted">Auto-updates when the spoken word matches the target.</p>
+            </div>
+          </div>
+
+          <div class="log">
+            <div class="log-header">
+              <p class="eyebrow">Response log</p>
+              <div class="manual-entry">
+                <label for="manual-input" class="muted">Typed entry (optional):</label>
+                <div class="manual-input-row">
+                  <input id="manual-input" type="text" placeholder="Type the participant's answer" />
+                  <button id="manual-btn" class="ghost">Add typed answer</button>
+                </div>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Answer</th>
+                  <th>Source</th>
+                  <th>Time</th>
+                  <th>Match</th>
+                </tr>
+              </thead>
+              <tbody id="log-body">
+                <tr class="empty-row">
+                  <td colspan="4">No responses yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+      <section class="stage-card" id="comprehension-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Language - Comprehension</p>
+            <h2>Sentence to picture matching</h2>
+            <p class="overview">Read the sentence aloud, then have the participant point to or say which picture matches.</p>
+          </div>
+          <span class="status-badge" id="comp-status">Idle</span>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Progress</span>
+            <span id="comp-progress-count" class="progress-count">1 / 8</span>
+          </div>
+          <div class="progress-bar">
+            <div id="comp-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Sentence</p>
+          <p class="prompt" id="comp-prompt">Something you can fly in</p>
+          <p class="muted">Select the picture that fits. Optionally type their spoken answer before submitting.</p>
+        </div>
+
+        <div class="image-grid" id="comp-image-grid" aria-label="Select the matching picture"></div>
+
+        <div class="controls">
+          <div class="control-row">
+            <button class="primary" id="comp-start-btn">Start Listening</button>
+            <button class="ghost" id="comp-stop-btn">Stop &amp; Capture</button>
+          </div>
+          <div class="manual-input-row">
+            <input id="comp-manual-input" type="text" placeholder="Type or edit the participant's answer (optional)" />
+            <button id="comp-manual-clear" class="ghost">Clear</button>
+          </div>
+          <div class="control-row">
+            <button class="primary" id="comp-submit-btn">Submit Answer</button>
+            <button class="ghost" id="comp-next-btn">Next sentence</button>
+            <button class="ghost danger" id="comp-reset-btn">Reset selection</button>
+          </div>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="comp-live-words" class="live-words"></div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Responses</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Sentence</th>
+                <th>Selected image</th>
+                <th>Typed answer</th>
+                <th>Result</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="comp-log-body">
+              <tr class="empty-row">
+                <td colspan="6">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="story-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Story Recall</p>
+            <h2>Immediate recall after story</h2>
+            <p class="overview">Read the story, then start listening and invite the participant to recall everything they remember.</p>
+          </div>
+          <span class="status-badge" id="story-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Prompt to read</p>
+          <p class="prompt">
+            "I am going to read you a short story. Please listen carefully. When I am finished, say as much as you can remember."
+            Last Sunday, the Annual Park Cleanup took place in Marigold Woods. Forty two people joined in to remove old bicycles and shopping carts.
+            Mr Robert Webber from the woodland project told local reporters that he was very impressed and especially proud of the 17 children who came along.
+          </p>
+          <p class="prompt">"Now that's the end of the story, what can you remember?"</p>
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="story-start-btn">Start Listening</button>
+          <button class="ghost" id="story-stop-btn">Stop &amp; Capture</button>
+          <button class="ghost danger" id="story-reset-btn">Reset story responses</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="story-live-words" class="live-words"></div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Story recall log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Transcript</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="story-log-body">
+              <tr class="empty-row">
+                <td colspan="3">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="spelling-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Language - Spelling</p>
+            <h2>Spoken spelling accuracy</h2>
+            <p class="overview">Read the target word, then capture the participant spelling it aloud. You can also type what they spelled.</p>
+          </div>
+          <span class="status-badge" id="spell-status">Idle</span>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Progress</span>
+            <span id="spell-progress-count" class="progress-count">1 / 12</span>
+          </div>
+          <div class="progress-bar">
+            <div id="spell-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Word to spell</p>
+          <p class="prompt" id="spell-word">Envelope</p>
+          <p class="muted">Press Start Listening, read the word, then prompt: <em>"Please spell that out loud."</em></p>
+        </div>
+
+        <div class="controls">
+          <div class="control-row">
+            <button class="primary" id="spell-start-btn">Start Listening</button>
+            <button class="ghost" id="spell-stop-btn">Stop &amp; Score</button>
+          </div>
+          <div class="manual-input-row">
+            <input id="spell-manual-input" type="text" placeholder="Type what they spelled (optional)" />
+            <button id="spell-manual-clear" class="ghost">Clear</button>
+          </div>
+          <div class="control-row">
+            <button class="primary" id="spell-submit-btn">Submit</button>
+            <button class="ghost" id="spell-next-btn">Next word</button>
+            <button class="ghost danger" id="spell-reset-btn">Reset word</button>
+          </div>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="spell-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Scoring</p>
+            <p class="result-title" id="spell-match-status">No response yet</p>
+            <p class="muted" id="spell-candidate"></p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Spelling log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Target</th>
+                <th>Captured</th>
+                <th>Result</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="spell-log-body">
+              <tr class="empty-row">
+                <td colspan="5">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="fluency-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Verbal Fluency</p>
+            <h2>Letter S (60 seconds)</h2>
+            <p class="overview">Start the timer, then capture all unique words beginning with "S". Exclude names, places, and numbers.</p>
+          </div>
+          <span class="status-badge" id="fluency-status">Idle</span>
+        </div>
+
+        <div class="timer-block">
+          <p class="eyebrow">Time remaining</p>
+          <span class="countdown" id="fluency-countdown">01:00</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Prompt to read</p>
+          <p class="prompt">
+            "I am going to give you a letter of the alphabet and I would like you to say as many different words as you can beginning with that letter, but not names of people, places, or numbers."
+            "You will have one minute. The letter is S."
+          </p>
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="fluency-start-btn">Start Listening</button>
+          <button class="ghost" id="fluency-stop-btn">Stop early</button>
+          <button class="ghost danger" id="fluency-reset-btn">Reset</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="fluency-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Score</p>
+            <p class="result-title" id="fluency-score">0 valid words</p>
+            <p class="muted">Duplicates and non-S words are ignored automatically.</p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Words captured</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Word</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="fluency-log-body">
+              <tr class="empty-row">
+                <td colspan="3">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="digits-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Executive - Reverse Digit Span</p>
+            <h2>Section 6: Reverse the spoken numbers</h2>
+            <p class="overview">
+              Read the trial numbers aloud. Participant repeats them in reverse order. Capture speech and mark correct if the reversed sequence matches exactly.
+            </p>
+          </div>
+          <span class="status-badge" id="digits-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Instructions to read</p>
+          <p class="prompt">
+            "I am going to say some numbers and I would like you to say them back to me in reverse order. For example, if I say ‘2 3 4’, you should say ‘4 3 2’.
+            Let’s have a practice. If I say ‘7 1 9’, what would you say?"
+          </p>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Trial</span>
+            <span id="digits-progress-count" class="progress-count">1 / 12</span>
+          </div>
+          <div class="progress-bar">
+            <div id="digits-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Current trial</p>
+          <p class="prompt" id="digits-trial-seq">2 6</p>
+          <p class="muted">Read the numbers, then prompt: <em>"Please say them back to me in reverse order."</em></p>
+        </div>
+
+        <div class="controls">
+          <div class="control-row">
+            <button class="primary" id="digits-start-btn">Start Listening</button>
+            <button class="ghost" id="digits-stop-btn">Stop &amp; Score</button>
+          </div>
+          <div class="manual-input-row">
+            <input id="digits-manual-input" type="text" placeholder="Type the participant's response (optional)" />
+            <button id="digits-manual-clear" class="ghost">Clear</button>
+          </div>
+          <div class="control-row">
+            <button class="primary" id="digits-submit-btn">Submit</button>
+            <button class="ghost" id="digits-next-btn">Next trial</button>
+            <button class="ghost danger" id="digits-reset-btn">Reset trial</button>
+          </div>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="digits-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Result</p>
+            <p class="result-title" id="digits-match-status">No response yet</p>
+            <p class="muted" id="digits-candidate"></p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Digit span log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Trial</th>
+                <th>Target</th>
+                <th>Response</th>
+                <th>Correct</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="digits-log-body">
+              <tr class="empty-row">
+                <td colspan="5">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="alternation-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Executive - Alternation</p>
+            <h2>Section 7: Number/letter switching</h2>
+            <p class="overview">
+              Start with 1-A, 2-B, 3-C together, then have the participant continue the sequence. Stop administration after the first error.
+            </p>
+          </div>
+          <span class="status-badge" id="alt-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Say</p>
+          <p class="prompt">
+            "I want you to alternate between numbers and letters, starting with 1-A, then 2-B, 3-C, and so on. Please continue from there,
+            alternating between numbers and letters, in order, without skipping any until I tell you to stop. Let's begin together, ready:
+            1-A, 2-B, 3-C..."
+          </p>
+          <p class="muted">Score correct whether they say number-first (4-D) or letter-first (D-4).</p>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Trial</span>
+            <span id="alt-progress-count" class="progress-count">1 / 12</span>
+          </div>
+          <div class="progress-bar">
+            <div id="alt-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Target trial</p>
+          <p class="prompt" id="alt-target">4 - D</p>
+          <p class="muted">Prompt: <em>"Please continue the sequence."</em></p>
+        </div>
+
+        <div class="controls">
+          <div class="control-row">
+            <button class="primary" id="alt-start-btn">Start Listening</button>
+            <button class="ghost" id="alt-stop-btn">Stop &amp; Score</button>
+          </div>
+          <div class="manual-input-row">
+            <input id="alt-manual-input" type="text" placeholder="Type the participant's response (optional)" />
+            <button id="alt-manual-clear" class="ghost">Clear</button>
+          </div>
+          <div class="control-row">
+            <button class="primary" id="alt-submit-btn">Submit</button>
+            <button class="ghost" id="alt-next-btn">Next trial</button>
+            <button class="ghost danger" id="alt-reset-btn">Reset trial</button>
+          </div>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="alt-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Result</p>
+            <p class="result-title" id="alt-match-status">No response yet</p>
+            <p class="muted" id="alt-candidate"></p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Alternation log</p>
+            <p class="muted">Stops after first error.</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Trial</th>
+                <th>Target</th>
+                <th>Response</th>
+                <th>Correct</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="alt-log-body">
+              <tr class="empty-row">
+                <td colspan="5">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="fluency-t-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Verbal Fluency</p>
+            <h2>Letter T (4-letter words, 60 seconds)</h2>
+            <p class="overview">Start the timer, capture unique 4-letter words beginning with "T". Exclude names, places, numbers, and non-words.</p>
+          </div>
+          <span class="status-badge" id="fluency-t-status">Idle</span>
+        </div>
+
+        <div class="timer-block">
+          <p class="eyebrow">Time remaining</p>
+          <span class="countdown" id="fluency-t-countdown">01:00</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Prompt to read</p>
+          <p class="prompt">
+            "I am going to give you a letter of the alphabet and I would like you to say as many different words as you can beginning with that letter,
+            but not names of people, places, or numbers. You will have one minute. The letter is T. Only 4-letter words count."
+          </p>
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="fluency-t-start-btn">Start Listening</button>
+          <button class="ghost" id="fluency-t-stop-btn">Stop early</button>
+          <button class="ghost danger" id="fluency-t-reset-btn">Reset</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="fluency-t-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Score</p>
+            <p class="result-title" id="fluency-t-score">0 valid words</p>
+            <p class="muted">Counts only unique 4-letter words starting with T.</p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Words captured</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Word</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="fluency-t-log-body">
+              <tr class="empty-row">
+                <td colspan="3">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="dots-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Visuospatial - Dot Counting</p>
+            <h2>Section 9: Count dots in each box</h2>
+            <p class="overview">
+              Progress left to right, top to bottom. Remind the participant not to point at the dots. One point for each correct box.
+            </p>
+          </div>
+          <span class="status-badge" id="dots-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Say</p>
+          <p class="prompt">"I would like you to count how many dots are in each box, but without pointing to them".</p>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Box</span>
+            <span id="dots-progress-count" class="progress-count">1 / 4</span>
+          </div>
+          <div class="progress-bar">
+            <div id="dots-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="image-frame">
+          <img id="dots-image" src="" alt="Dot counting prompt" />
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="dots-start-btn">Start Listening</button>
+          <button class="ghost" id="dots-stop-btn">Stop &amp; Score</button>
+          <button class="ghost" id="dots-next-btn">Next box</button>
+          <button class="ghost danger" id="dots-reset-btn">Reset box</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="dots-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Result</p>
+            <p class="result-title" id="dots-match-status">No response yet</p>
+            <p class="muted" id="dots-candidate"></p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Dot counting log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Box</th>
+                <th>Target</th>
+                <th>Response</th>
+                <th>Correct</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="dots-log-body">
+              <tr class="empty-row">
+                <td colspan="5">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="cubes-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Visuospatial - Cube Counting</p>
+            <h2>Section 10: Count all cubes</h2>
+            <p class="overview">
+              Progress left to right, top to bottom through the structures. Count all cubes, including those you cannot see. One point per correct answer.
+            </p>
+          </div>
+          <span class="status-badge" id="cubes-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Say</p>
+          <p class="prompt">"How many cubes are in each structure, including the ones you may not be able to see?"</p>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Structure</span>
+            <span id="cubes-progress-count" class="progress-count">1 / 4</span>
+          </div>
+          <div class="progress-bar">
+            <div id="cubes-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="image-frame">
+          <img id="cubes-image" src="" alt="Cube counting prompt" />
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="cubes-start-btn">Start Listening</button>
+          <button class="ghost" id="cubes-stop-btn">Stop &amp; Score</button>
+          <button class="ghost" id="cubes-next-btn">Next structure</button>
+          <button class="ghost danger" id="cubes-reset-btn">Reset structure</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="cubes-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Result</p>
+            <p class="result-title" id="cubes-match-status">No response yet</p>
+            <p class="muted" id="cubes-candidate"></p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Cube counting log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Target</th>
+                <th>Response</th>
+                <th>Correct</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="cubes-log-body">
+              <tr class="empty-row">
+                <td colspan="5">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="numberloc-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Visuospatial - Number Location</p>
+            <h2>Section 11: Which number has the dot?</h2>
+            <p class="overview">
+              Progress left to right, top to bottom. Ask which number corresponds to the dot position. One point per correct answer.
+            </p>
+          </div>
+          <span class="status-badge" id="numberloc-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Say</p>
+          <p class="prompt">"Which number corresponds to the position of the dot?"</p>
+          <p class="muted">If needed: "If you were to lift the bottom box and place it over the top box, which number would the dot cover?"</p>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Card</span>
+            <span id="numberloc-progress-count" class="progress-count">1 / 4</span>
+          </div>
+          <div class="progress-bar">
+            <div id="numberloc-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="image-frame">
+          <img id="numberloc-image" src="" alt="Number location prompt" />
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="numberloc-start-btn">Start Listening</button>
+          <button class="ghost" id="numberloc-stop-btn">Stop &amp; Score</button>
+          <button class="ghost" id="numberloc-next-btn">Next card</button>
+          <button class="ghost danger" id="numberloc-reset-btn">Reset card</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="numberloc-live-words" class="live-words"></div>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-card">
+            <p class="eyebrow">Result</p>
+            <p class="result-title" id="numberloc-match-status">No response yet</p>
+            <p class="muted" id="numberloc-candidate"></p>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Number location log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Target</th>
+                <th>Response</th>
+                <th>Correct</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="numberloc-log-body">
+              <tr class="empty-row">
+                <td colspan="5">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
