@@ -1,6 +1,6 @@
 # Automated RAVLT Conductor
 
-This prototype web page mirrors every spoken portion of the Rey Auditory Verbal Learning Test (RAVLT). Each section prints the official examiner script, shows the word list to read aloud, and uses on-device speech recognition to capture the participant's recall in real time.
+This prototype web page mirrors every spoken portion of the Rey Auditory Verbal Learning Test (RAVLT). It uses on-device speech recognition to capture the participant's recall in real time & score their responses.
 
 > **Browser requirement:** Google Chrome (desktop) currently provides the most reliable Web Speech API implementation. Other browsers may disable the microphone, in which case the page shows a warning and the Start Listening buttons stay disabled.
 
@@ -33,9 +33,4 @@ This prototype web page mirrors every spoken portion of the Rey Auditory Verbal 
 - Post-trial scoring table that follows RAVLT conventions (only correct words receive an order number; intrusions/repetitions do not).
 - Reset controls per section so the examiner can quickly restart if the participant requests a do-over.
 
-## Limitations & next ideas
 
-- Recognition accuracy depends on microphone quality and ambient noise. Keep a manual log nearby in case a backup is needed.
-- The prototype does not store transcripts or export data yet. Capture screenshots or copy/paste the table if you need to archive a session.
-- The recognition word list/yes-no stage is not included; only the free-recall portions are automated here.
-- Future enhancements could add a calibration step, configurable pacing timers, or a secure export to REDCap / NACC forms.
