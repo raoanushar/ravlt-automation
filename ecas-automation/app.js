@@ -157,8 +157,6 @@ const dom = {
   compProgressCount: document.getElementById("comp-progress-count"),
   compProgressFill: document.getElementById("comp-progress-fill"),
   compImageGrid: document.getElementById("comp-image-grid"),
-  compManualInput: document.getElementById("comp-manual-input"),
-  compManualClear: document.getElementById("comp-manual-clear"),
   compStartBtn: document.getElementById("comp-start-btn"),
   compStopBtn: document.getElementById("comp-stop-btn"),
   compLiveWords: document.getElementById("comp-live-words"),
@@ -166,6 +164,7 @@ const dom = {
   compNextBtn: document.getElementById("comp-next-btn"),
   compResetBtn: document.getElementById("comp-reset-btn"),
   compLogBody: document.getElementById("comp-log-body"),
+  compSectionScore: document.getElementById("comp-section-score"),
   spellStatus: document.getElementById("spell-status"),
   spellProgressCount: document.getElementById("spell-progress-count"),
   spellProgressFill: document.getElementById("spell-progress-fill"),
@@ -249,6 +248,7 @@ const dom = {
   cubesMatchStatus: document.getElementById("cubes-match-status"),
   cubesCandidate: document.getElementById("cubes-candidate"),
   cubesLogBody: document.getElementById("cubes-log-body"),
+  sectionScore: document.getElementById("section-score"),
   numberlocStatus: document.getElementById("numberloc-status"),
   numberlocProgressCount: document.getElementById("numberloc-progress-count"),
   numberlocProgressFill: document.getElementById("numberloc-progress-fill"),
@@ -267,17 +267,18 @@ const itemStates = items.map(() => ({
   entries: [],
   tokens: [],
   matched: false,
-  status: "pending"
+  status: "pending",
+  notes: ""
 }));
 
 const compStates = comprehensionPrompts.map(() => ({
   selectedId: null,
-  typedAnswer: "",
   status: "pending",
   correct: false,
   timestamp: null,
   tokens: [],
-  entries: []
+  entries: [],
+  notes: ""
 }));
 
 const spellingStates = spellingWords.map(() => ({
@@ -392,12 +393,16 @@ function bindControls() {
   dom.stopBtn.addEventListener("click", stopListening);
   dom.nextBtn.addEventListener("click", () => moveToIndex(activeIndex + 1));
   dom.resetBtn.addEventListener("click", resetCurrentItem);
-  dom.manualBtn.addEventListener("click", addManualEntry);
-  dom.manualInput.addEventListener("keydown", event => {
-    if (event.key === "Enter") {
-      addManualEntry();
-    }
-  });
+  if (dom.manualBtn) {
+    dom.manualBtn.addEventListener("click", addManualEntry);
+  }
+  if (dom.manualInput) {
+    dom.manualInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        addManualEntry();
+      }
+    });
+  }
 
   if (dom.compSubmitBtn) {
     dom.compSubmitBtn.addEventListener("click", submitComprehension);
@@ -407,24 +412,6 @@ function bindControls() {
   }
   if (dom.compResetBtn) {
     dom.compResetBtn.addEventListener("click", resetComprehension);
-  }
-  if (dom.compManualClear) {
-    dom.compManualClear.addEventListener("click", () => {
-      dom.compManualInput.value = "";
-      const state = compStates[compIndex];
-      state.typedAnswer = "";
-    });
-  }
-  if (dom.compManualInput) {
-    dom.compManualInput.addEventListener("input", event => {
-      const state = compStates[compIndex];
-      state.typedAnswer = event.target.value || "";
-      if (state.status === "completed") {
-        state.status = "pending";
-      }
-      evaluateComprehension(state, comprehensionPrompts[compIndex]);
-      updateComprehensionUI();
-    });
   }
   if (dom.compStartBtn) {
     dom.compStartBtn.addEventListener("click", startComprehensionListening);
@@ -725,7 +712,6 @@ function loadComprehension(index) {
   const question = comprehensionPrompts[compIndex];
   dom.compPrompt.textContent = question.prompt;
   dom.compProgressCount.textContent = `${compIndex + 1} / ${comprehensionPrompts.length}`;
-  dom.compManualInput.value = compStates[compIndex].typedAnswer || "";
   updateComprehensionUI();
 }
 
@@ -1553,10 +1539,8 @@ function selectComprehensionImage(imageId) {
 function submitComprehension() {
   const state = compStates[compIndex];
   const question = comprehensionPrompts[compIndex];
-  state.typedAnswer = dom.compManualInput.value.trim();
-
-  if (!state.selectedId && !state.typedAnswer) {
-    alert("Select a picture or type an answer before submitting.");
+  if (!state.selectedId && !state.entries.length) {
+    alert("Select a picture or capture a response before submitting.");
     return;
   }
   evaluateComprehension(state, question);
@@ -1567,7 +1551,7 @@ function submitComprehension() {
 
 function moveComprehension(index) {
   const current = compStates[compIndex];
-  if (current.status === "pending" && (current.selectedId || current.typedAnswer)) {
+  if (current.status === "pending" && (current.selectedId || current.entries.length)) {
     submitComprehension();
   }
   loadComprehension(index);
@@ -1580,13 +1564,11 @@ function resetComprehension() {
     captureContext = null;
   }
   state.selectedId = null;
-  state.typedAnswer = "";
   state.correct = false;
   state.status = "pending";
   state.timestamp = null;
   state.tokens = [];
   state.entries = [];
-  dom.compManualInput.value = "";
   updateComprehensionUI();
 }
 
@@ -1747,10 +1729,6 @@ function handleRecognitionResult(event) {
         tokens
       });
       state.tokens.push(...tokens);
-    }
-    if (!state.typedAnswer && state.entries.length) {
-      state.typedAnswer = state.entries[state.entries.length - 1].text;
-      dom.compManualInput.value = state.typedAnswer;
     }
     evaluateComprehension(state, comprehensionPrompts[compIndex]);
     updateComprehensionUI();
@@ -2332,6 +2310,9 @@ function resetCurrentItem() {
 }
 
 function addManualEntry() {
+  if (!dom.manualInput) {
+    return;
+  }
   const value = (dom.manualInput.value || "").trim();
   if (!value) {
     return;
@@ -2664,40 +2645,61 @@ function renderComprehensionLog() {
     return;
   }
   const frag = document.createDocumentFragment();
-  let hasRows = false;
-  compStates.forEach((state, idx) => {
-    if (!state.status || state.status === "pending") {
-      return;
-    }
-    hasRows = true;
+  let correctCount = 0;
+  comprehensionPrompts.forEach((q, idx) => {
     const tr = document.createElement("tr");
-    const q = comprehensionPrompts[idx];
-    const numberTd = document.createElement("td");
-    numberTd.textContent = idx + 1;
-    const promptTd = document.createElement("td");
-    promptTd.textContent = q.prompt;
-    const selectedTd = document.createElement("td");
-    selectedTd.textContent = state.selectedId ? itemLookup[state.selectedId].label : "—";
-    const typedTd = document.createElement("td");
-    typedTd.textContent = state.typedAnswer || "—";
-    const resultTd = document.createElement("td");
+    const state = compStates[idx];
+    const expected = itemLookup[q.answerId];
+
+    const correctTd = document.createElement("td");
+    correctTd.textContent = `${idx + 1}. ${expected ? expected.label : ""}`;
+
+    const responseTd = document.createElement("td");
+    const latestEntry = state.entries
+      .slice()
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    const selectionLabel = state.selectedId ? itemLookup[state.selectedId].label : "";
+    const spoken = latestEntry ? latestEntry.text : "";
+    const combined = [selectionLabel, spoken].filter(Boolean).join(" / ");
+    responseTd.textContent = combined || "";
+
+    const scoreTd = document.createElement("td");
+    let pillClass = "pending";
+    let pillText = "Pending";
+    if (state.entries.length || state.selectedId) {
+      const matched = evaluateComprehension(state, q);
+      pillClass = matched ? "success" : "miss";
+      pillText = matched ? "Correct" : "Incorrect";
+      if (matched) {
+        correctCount += 1;
+      }
+    }
     const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
-    resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(numberTd, promptTd, selectedTd, typedTd, resultTd, timeTd);
+    pill.className = `match-pill ${pillClass}`;
+    pill.textContent = pillText;
+    scoreTd.appendChild(pill);
+
+    const notesTd = document.createElement("td");
+    const notesInput = document.createElement("input");
+    notesInput.type = "text";
+    notesInput.value = state.notes || "";
+    notesInput.placeholder = "Notes";
+    notesInput.dataset.index = idx;
+    notesInput.addEventListener("input", event => {
+      const targetState = compStates[Number(event.target.dataset.index)];
+      targetState.notes = event.target.value;
+    });
+    notesTd.appendChild(notesInput);
+
+    tr.append(correctTd, responseTd, scoreTd, notesTd);
     frag.appendChild(tr);
   });
 
-  if (!hasRows) {
-    dom.compLogBody.innerHTML = '<tr class="empty-row"><td colspan="6">No responses yet.</td></tr>';
-    return;
-  }
-
   dom.compLogBody.innerHTML = "";
   dom.compLogBody.appendChild(frag);
+  if (dom.compSectionScore) {
+    dom.compSectionScore.textContent = `${correctCount}`;
+  }
 }
 
 function renderComprehensionLive() {
@@ -3707,38 +3709,52 @@ function renderMatchStatus() {
 }
 
 function renderLog() {
-  const state = itemStates[activeIndex];
-  if (!state.entries.length) {
-    dom.logBody.innerHTML =
-      '<tr class="empty-row"><td colspan="4">No responses yet.</td></tr>';
-    return;
-  }
-  const targetSet = buildTargetSet(items[activeIndex].answers);
   const frag = document.createDocumentFragment();
-  state.entries
-    .slice()
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .forEach(entry => {
-      const tr = document.createElement("tr");
-      const answerTd = document.createElement("td");
-      answerTd.textContent = entry.text || "(blank)";
-      const sourceTd = document.createElement("td");
-      sourceTd.textContent = entry.source;
-      const timeTd = document.createElement("td");
-      timeTd.textContent = formatTime(entry.timestamp);
-      const matchTd = document.createElement("td");
+  let correctCount = 0;
+  items.forEach((item, index) => {
+    const tr = document.createElement("tr");
+    const state = itemStates[index];
+    const targetSet = buildTargetSet(item.answers);
 
-      const hasMatch = entry.tokens.some(token => targetSet.has(token));
-      const pill = document.createElement("span");
-      pill.className = `match-pill ${hasMatch ? "success" : "pending"}`;
-      pill.textContent = hasMatch ? "Matches target" : "No match";
-      matchTd.appendChild(pill);
+    const correctTd = document.createElement("td");
+    correctTd.textContent = `${index + 1}. ${item.label}`;
 
-      tr.append(answerTd, sourceTd, timeTd, matchTd);
-      frag.appendChild(tr);
+    const participantTd = document.createElement("td");
+    const latestEntry = state.entries
+      .slice()
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    participantTd.textContent = latestEntry ? latestEntry.text || "(blank)" : "";
+
+    const scoreTd = document.createElement("td");
+    const matched = state.entries.length ? evaluateMatch(state, item) : false;
+    const pill = document.createElement("span");
+    pill.className = `match-pill ${state.entries.length ? (matched ? "success" : "miss") : "pending"}`;
+    pill.textContent = state.entries.length ? (matched ? "Correct" : "Incorrect") : "Pending";
+    scoreTd.appendChild(pill);
+    if (matched) {
+      correctCount += 1;
+    }
+
+    const notesTd = document.createElement("td");
+    const notesInput = document.createElement("input");
+    notesInput.type = "text";
+    notesInput.value = state.notes || "";
+    notesInput.placeholder = "Notes";
+    notesInput.dataset.index = index;
+    notesInput.addEventListener("input", event => {
+      const targetState = itemStates[Number(event.target.dataset.index)];
+      targetState.notes = event.target.value;
     });
+    notesTd.appendChild(notesInput);
+
+    tr.append(correctTd, participantTd, scoreTd, notesTd);
+    frag.appendChild(tr);
+  });
   dom.logBody.innerHTML = "";
   dom.logBody.appendChild(frag);
+  if (dom.sectionScore) {
+    dom.sectionScore.textContent = `${correctCount}`;
+  }
 }
 
 function updateButtons() {
@@ -3759,10 +3775,9 @@ function evaluateComprehension(state, question) {
   const expected = itemLookup[question.answerId];
   const targetSet = buildTargetSet(expected ? expected.answers : []);
   const selectionMatch = state.selectedId === question.answerId;
-  const typedTokens = tokenize(state.typedAnswer || "");
-  const typedMatch = typedTokens.some(token => targetSet.has(token));
   const voiceMatch = (state.tokens || []).some(token => targetSet.has(token));
-  state.correct = Boolean(selectionMatch || typedMatch || voiceMatch);
+  state.correct = Boolean(selectionMatch || voiceMatch);
+  return state.correct;
 }
 
 function evaluateSpelling(state, target) {

@@ -11,10 +11,7 @@
       <header>
         <div>
           <p class="eyebrow">Clinical workflow helper</p>
-          <h1>ECAS Naming Exercise - Guided Flow</h1>
-          <p class="lede">
-            Show each picture, prompt the participant to name it aloud, and capture responses with Chrome's built-in speech recognition.
-          </p>
+          <h1>Edinburgh Cognitive and Behavioural ALS Screen (ECAS) - AI-Powered Proctor</h1>
         </div>
         <div class="meta">
           <span class="badge">Mic + Chrome required</span>
@@ -29,7 +26,7 @@
         <section class="stage-card">
           <div class="stage-header">
             <div>
-              <p class="eyebrow">Picture prompt</p>
+              <p class="eyebrow">1. Language -Naming</p>
               <h2 id="item-title">Item 1 of 1</h2>
               <p class="overview">Press Start Listening, show the picture, and wait for the participant to name it.</p>
             </div>
@@ -84,29 +81,22 @@
           <div class="log">
             <div class="log-header">
               <p class="eyebrow">Response log</p>
-              <div class="manual-entry">
-                <label for="manual-input" class="muted">Typed entry (optional):</label>
-                <div class="manual-input-row">
-                  <input id="manual-input" type="text" placeholder="Type the participant's answer" />
-                  <button id="manual-btn" class="ghost">Add typed answer</button>
-                </div>
-              </div>
             </div>
             <table>
               <thead>
                 <tr>
-                  <th>Answer</th>
-                  <th>Source</th>
-                  <th>Time</th>
-                  <th>Match</th>
+                  <th>Correct Response</th>
+                  <th>Participant Response</th>
+                  <th>Score</th>
+                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody id="log-body">
-                <tr class="empty-row">
-                  <td colspan="4">No responses yet.</td>
-                </tr>
               </tbody>
             </table>
+            <div class="section-score">
+              Section Score (0-8): <span id="section-score">0</span>
+            </div>
           </div>
         </section>
       </main>
@@ -114,7 +104,7 @@
       <section class="stage-card" id="comprehension-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Language - Comprehension</p>
+            <p class="eyebrow">2. Language - Comprehension</p>
             <h2>Sentence to picture matching</h2>
             <p class="overview">Read the sentence aloud, then have the participant point to or say which picture matches.</p>
           </div>
@@ -134,7 +124,7 @@
         <div class="prompt-box">
           <p class="eyebrow">Sentence</p>
           <p class="prompt" id="comp-prompt">Something you can fly in</p>
-          <p class="muted">Select the picture that fits. Optionally type their spoken answer before submitting.</p>
+          <p class="muted">Select the picture that fits. Capture responses via voice or selection.</p>
         </div>
 
         <div class="image-grid" id="comp-image-grid" aria-label="Select the matching picture"></div>
@@ -143,10 +133,6 @@
           <div class="control-row">
             <button class="primary" id="comp-start-btn">Start Listening</button>
             <button class="ghost" id="comp-stop-btn">Stop &amp; Capture</button>
-          </div>
-          <div class="manual-input-row">
-            <input id="comp-manual-input" type="text" placeholder="Type or edit the participant's answer (optional)" />
-            <button id="comp-manual-clear" class="ghost">Clear</button>
           </div>
           <div class="control-row">
             <button class="primary" id="comp-submit-btn">Submit Answer</button>
@@ -160,34 +146,35 @@
           <div id="comp-live-words" class="live-words"></div>
         </div>
 
-        <div class="log">
-          <div class="log-header">
-            <p class="eyebrow">Responses</p>
+          <div class="log">
+            <div class="log-header">
+              <p class="eyebrow">Response log</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Correct Response</th>
+                  <th>Participant Response</th>
+                  <th>Score</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="comp-log-body">
+                <tr class="empty-row">
+                  <td colspan="4">No responses yet.</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="section-score">
+              Section Score (0-8): <span id="comp-section-score">0</span>
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Sentence</th>
-                <th>Selected image</th>
-                <th>Typed answer</th>
-                <th>Result</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody id="comp-log-body">
-              <tr class="empty-row">
-                <td colspan="6">No responses yet.</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </section>
 
       <section class="stage-card" id="story-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Story Recall</p>
+            <p class="eyebrow">3. Memory - Immediate Recall</p>
             <h2>Immediate recall after story</h2>
             <p class="overview">Read the story, then start listening and invite the participant to recall everything they remember.</p>
           </div>

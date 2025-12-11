@@ -432,6 +432,24 @@ th {
   color: var(--muted);
 }
 
+.log td:nth-child(4) {
+  width: 180px;
+}
+
+.log input {
+  width: 100%;
+  max-width: 160px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font: inherit;
+}
+
+.section-score {
+  margin-top: 0.6rem;
+  font-weight: 700;
+}
+
 @media (max-width: 720px) {
   .stage-card {
     padding: 1.25rem;
