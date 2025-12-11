@@ -186,6 +186,8 @@ const dom = {
   storyResetBtn: document.getElementById("story-reset-btn"),
   storyLiveWords: document.getElementById("story-live-words"),
   storyLogBody: document.getElementById("story-log-body"),
+  storyScoreBtn: document.getElementById("story-score-btn"),
+  storySectionScore: document.getElementById("story-section-score"),
   digitsStatus: document.getElementById("digits-status"),
   digitsProgressCount: document.getElementById("digits-progress-count"),
   digitsProgressFill: document.getElementById("digits-progress-fill"),
@@ -309,6 +311,28 @@ const storyState = {
   entries: [],
   timestamp: null
 };
+const STORY_CRITERIA = [
+  { key: "sunday", checkboxId: "story-sunday" },
+  { key: "annual_cleanup", checkboxId: "story-annual_cleanup" },
+  { key: "marigold_woods", checkboxId: "story-marigold_woods" },
+  { key: "forty_two", checkboxId: "story-forty_two" },
+  { key: "bicycles_and_carts", checkboxId: "story-bicycles_and_carts" },
+  { key: "robert_webber", checkboxId: "story-robert_webber" },
+  { key: "woodland_project", checkboxId: "story-woodland_project" },
+  { key: "positive_emotion", checkboxId: "story-positive_emotion" },
+  { key: "seventeen", checkboxId: "story-seventeen" },
+  { key: "children", checkboxId: "story-children" }
+];
+const storyScoreInputs = STORY_CRITERIA.reduce((acc, criterion) => {
+  acc[criterion.key] = document.getElementById(criterion.checkboxId);
+  return acc;
+}, {});
+const STORY_SCORER_URL = window.STORY_SCORER_URL || "";
+Object.values(storyScoreInputs).forEach(input => {
+  if (input) {
+    input.addEventListener("change", updateStoryScoreFromChecks);
+  }
+});
 const fluencyState = {
   status: "pending",
   tokens: [],
@@ -462,6 +486,9 @@ function bindControls() {
   }
   if (dom.storyResetBtn) {
     dom.storyResetBtn.addEventListener("click", resetStory);
+  }
+  if (dom.storyScoreBtn) {
+    dom.storyScoreBtn.addEventListener("click", scoreStoryWithLLM);
   }
   if (document.getElementById("fluency-start-btn")) {
     document.getElementById("fluency-start-btn").addEventListener("click", startFluencyListening);
@@ -1629,6 +1656,112 @@ function resetStory() {
   storyState.entries = [];
   storyState.timestamp = null;
   renderStoryUI();
+}
+
+function getStoryTranscript() {
+  if (!storyState.entries.length) {
+    return "";
+  }
+  return storyState.entries
+    .slice()
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map(entry => entry.text || "")
+    .join("\n");
+}
+
+async function scoreStoryWithLLM() {
+  if (!storyState.entries.length) {
+    alert("Capture the participant's story recall before scoring.");
+    return;
+  }
+  if (dom.storyScoreBtn) {
+    dom.storyScoreBtn.disabled = true;
+    dom.storyScoreBtn.textContent = "Scoring...";
+  }
+  try {
+    const transcript = getStoryTranscript();
+    if (!STORY_SCORER_URL) {
+      // Fallback: simple keyword scoring when no LLM endpoint is configured.
+      const fallback = keywordScoreStory(transcript);
+      applyStoryScore(fallback);
+    } else {
+      const response = await fetch(STORY_SCORER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript })
+      });
+      if (!response.ok) {
+        throw new Error(`Scorer returned ${response.status}`);
+      }
+      const data = await response.json();
+      applyStoryScore(data);
+    }
+  } catch (err) {
+    console.error("Story scoring failed", err);
+    alert("Story scoring failed. Check the console and scorer configuration.");
+  } finally {
+    if (dom.storyScoreBtn) {
+      dom.storyScoreBtn.disabled = false;
+      dom.storyScoreBtn.textContent = "Score with LLM";
+    }
+  }
+}
+
+function applyStoryScore(result) {
+  let total = 0;
+  STORY_CRITERIA.forEach(({ key }) => {
+    const input = storyScoreInputs[key];
+    const raw = result && result[key];
+    const value = raw === "yes" || raw === true;
+    if (input) {
+      input.checked = Boolean(value);
+    }
+    if (value) {
+      total += 1;
+    }
+  });
+  if (dom.storySectionScore) {
+    dom.storySectionScore.textContent = `${total}`;
+  }
+}
+
+function updateStoryScoreFromChecks() {
+  let total = 0;
+  STORY_CRITERIA.forEach(({ key }) => {
+    const input = storyScoreInputs[key];
+    if (input && input.checked) {
+      total += 1;
+    }
+  });
+  if (dom.storySectionScore) {
+    dom.storySectionScore.textContent = `${total}`;
+  }
+}
+
+function keywordScoreStory(transcript) {
+  const text = (transcript || "").toLowerCase();
+  const has = phrase => text.includes(phrase);
+  const score = {};
+  score.sunday = has("sunday") ? "yes" : "no";
+  score.annual_cleanup =
+    has("annual park cleanup") ||
+    has("annual cleanup") ||
+    has("garbage cleanup") ||
+    has("park cleanup") ||
+    has("annual trash cleanup")
+      ? "yes"
+      : "no";
+  score.marigold_woods = has("marigold") || has("woods") || has("forest") || has("park") ? "yes" : "no";
+  score.forty_two = has("forty two") || has("forty-two") ? "yes" : "no";
+  const mentionsBikes = has("bicycle") || has("bike") || has("bikes");
+  const mentionsCarts = has("cart") || has("carts") || has("trolley") || has("trolleys");
+  score.bicycles_and_carts = mentionsBikes && mentionsCarts ? "yes" : "no";
+  score.robert_webber = has("robert") || has("webber") ? "yes" : "no";
+  score.woodland_project = has("woodland") && (has("project") || has("plan") || has("initiative") || has("program")) ? "yes" : "no";
+  score.positive_emotion = has("pleased") || has("impressed") || has("proud") || has("happy") || has("glad") ? "yes" : "no";
+  score.seventeen = has("17") || has("seventeen") ? "yes" : "no";
+  score.children = has("children") || has("kids") || has("child") ? "yes" : "no";
+  return score;
 }
 
 function startListening() {
@@ -2831,18 +2964,8 @@ function renderStoryUI() {
   }
 
   if (dom.storyLiveWords) {
-    if (!storyState.tokens.length) {
-      dom.storyLiveWords.innerHTML = '<span class="muted">No words captured yet.</span>';
-    } else {
-      const frag = document.createDocumentFragment();
-      storyState.tokens.slice(-20).forEach(token => {
-        const chip = document.createElement("span");
-        chip.textContent = token;
-        frag.appendChild(chip);
-      });
-      dom.storyLiveWords.innerHTML = "";
-      dom.storyLiveWords.appendChild(frag);
-    }
+    const transcript = getStoryTranscript();
+    dom.storyLiveWords.textContent = transcript || "No words captured yet.";
   }
 
   if (dom.storyLogBody) {

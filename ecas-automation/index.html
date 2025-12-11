@@ -183,10 +183,13 @@
 
         <div class="prompt-box">
           <p class="eyebrow">Prompt to read</p>
+          <p class="prompt">"I am going to read you a short story. Please listen carefully. When I am finished, say as much as you can remember."</p>
           <p class="prompt">
-            "I am going to read you a short story. Please listen carefully. When I am finished, say as much as you can remember."
-            Last Sunday, the Annual Park Cleanup took place in Marigold Woods. Forty two people joined in to remove old bicycles and shopping carts.
-            Mr Robert Webber from the woodland project told local reporters that he was very impressed and especially proud of the 17 children who came along.
+            Last <u><strong><em>Sunday</em></strong></u>, the <u><strong><em>Annual Park Cleanup</em></strong></u> took place in
+            <u><strong><em>Marigold Woods</em></strong></u>. <u><strong><em>Forty two</em></strong></u> people joined in to remove old
+            <u><strong><em>bicycles and shopping carts</em></strong></u>. Mr <u><strong><em>Robert Webber</em></strong></u> from the
+            <u><strong><em>woodland project</em></strong></u> told local reporters that he was very <u><strong><em>impressed and especially proud</em></strong></u> of the
+            <u><strong><em>17 children</em></strong></u> who came along.
           </p>
           <p class="prompt">"Now that's the end of the story, what can you remember?"</p>
         </div>
@@ -204,22 +207,73 @@
 
         <div class="log">
           <div class="log-header">
-            <p class="eyebrow">Story recall log</p>
+            <p class="eyebrow">Story recall Scoring</p>
+            <button class="ghost" id="story-score-btn">Score with LLM</button>
           </div>
-          <table>
+          <table class="scoring-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Transcript</th>
-                <th>Time</th>
+                <th>Term</th>
+                <th>Criteria</th>
+                <th>1 point</th>
               </tr>
             </thead>
-            <tbody id="story-log-body">
-              <tr class="empty-row">
-                <td colspan="3">No responses yet.</td>
+            <tbody>
+              <tr>
+                <td>Sunday</td>
+                <td>Only “Sunday” is accepted.</td>
+                <td><input id="story-sunday" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Annual Park Cleanup</td>
+                <td>“Annual cleanup”, “garbage cleanup”, “park cleanup”, or “annual trash cleanup”.</td>
+                <td><input id="story-annual_cleanup" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Marigold Woods</td>
+                <td>Any part of “Marigold Woods” verbatim; similar place like “forest”, “park”.</td>
+                <td><input id="story-marigold_woods" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Forty two</td>
+                <td>Only “Forty-two”.</td>
+                <td><input id="story-forty_two" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Bicycles and shopping carts</td>
+                <td>Mentions for both items; similar terms (e.g., “carts”, “trolley”).</td>
+                <td><input id="story-bicycles_and_carts" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Robert Webber</td>
+                <td>“Robert” and/or “Webber”.</td>
+                <td><input id="story-robert_webber" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Woodland project</td>
+                <td>“Woodland” plus a project synonym (e.g., “plan”).</td>
+                <td><input id="story-woodland_project" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Impressed and especially proud</td>
+                <td>Any positive emotional response (e.g., “pleased”).</td>
+                <td><input id="story-positive_emotion" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>17</td>
+                <td>Only “Seventeen”.</td>
+                <td><input id="story-seventeen" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Children</td>
+                <td>“Children” or similar (e.g., “kids”).</td>
+                <td><input id="story-children" type="checkbox" /></td>
               </tr>
             </tbody>
           </table>
+          <div class="section-score">
+            Section Score (0-10): <span id="story-section-score">0</span>
+          </div>
         </div>
       </section>
 
