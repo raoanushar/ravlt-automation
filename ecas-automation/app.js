@@ -79,6 +79,20 @@ const spellingWords = [
   "SCREWDRIVER",
   "BROUGHT"
 ];
+const spellingWordLabels = [
+  "Envelope",
+  "Skateboard",
+  "Constructing",
+  "Partner",
+  "Biscuit",
+  "Lawnmower",
+  "Deliver",
+  "Recorded",
+  "Coathanger",
+  "Orchestra",
+  "Screwdriver",
+  "Brought"
+];
 
 const digitTrials = [
   "2 6",
@@ -118,6 +132,21 @@ const numberLocTrials = [
   { id: 3, src: "form_a/number_location/3.png", answer: "2" },
   { id: 4, src: "form_a/number_location/4.png", answer: "3" }
 ];
+
+const sentencePrompts = [
+  "The mailman knocked on the",
+  "He brought his umbrella with him in case of",
+  "Sally spread her toast with butter and",
+  "John went to the barbers to get his hair",
+  "She dived into the swimming",
+  "They all went to the local café for something to"
+];
+
+const sentenceState = {
+  index: 0,
+  status: "pending",
+  responses: Array(sentencePrompts.length).fill("")
+};
 
 const alternationTrials = [
   { number: 4, letter: "D" },
@@ -180,6 +209,7 @@ const dom = {
   spellMatchStatus: document.getElementById("spell-match-status"),
   spellCandidate: document.getElementById("spell-candidate"),
   spellLogBody: document.getElementById("spell-log-body"),
+  spellSectionScore: document.getElementById("spell-section-score"),
   storyStatus: document.getElementById("story-status"),
   storyStartBtn: document.getElementById("story-start-btn"),
   storyStopBtn: document.getElementById("story-stop-btn"),
@@ -187,6 +217,7 @@ const dom = {
   storyLiveWords: document.getElementById("story-live-words"),
   storyLogBody: document.getElementById("story-log-body"),
   storyScoreBtn: document.getElementById("story-score-btn"),
+  storyScoreDeterministicBtn: document.getElementById("story-score-deterministic-btn"),
   storySectionScore: document.getElementById("story-section-score"),
   digitsStatus: document.getElementById("digits-status"),
   digitsProgressCount: document.getElementById("digits-progress-count"),
@@ -194,7 +225,7 @@ const dom = {
   digitsTrialSeq: document.getElementById("digits-trial-seq"),
   digitsStartBtn: document.getElementById("digits-start-btn"),
   digitsStopBtn: document.getElementById("digits-stop-btn"),
-  digitsSubmitBtn: document.getElementById("digits-submit-btn"),
+  digitsPrevBtn: document.getElementById("digits-prev-btn"),
   digitsNextBtn: document.getElementById("digits-next-btn"),
   digitsResetBtn: document.getElementById("digits-reset-btn"),
   digitsManualInput: document.getElementById("digits-manual-input"),
@@ -203,6 +234,7 @@ const dom = {
   digitsMatchStatus: document.getElementById("digits-match-status"),
   digitsCandidate: document.getElementById("digits-candidate"),
   digitsLogBody: document.getElementById("digits-log-body"),
+  digitsSectionScore: document.getElementById("digits-section-score"),
   altStatus: document.getElementById("alt-status"),
   altProgressCount: document.getElementById("alt-progress-count"),
   altProgressFill: document.getElementById("alt-progress-fill"),
@@ -212,12 +244,11 @@ const dom = {
   altSubmitBtn: document.getElementById("alt-submit-btn"),
   altNextBtn: document.getElementById("alt-next-btn"),
   altResetBtn: document.getElementById("alt-reset-btn"),
-  altManualInput: document.getElementById("alt-manual-input"),
-  altManualClear: document.getElementById("alt-manual-clear"),
   altLiveWords: document.getElementById("alt-live-words"),
   altMatchStatus: document.getElementById("alt-match-status"),
   altCandidate: document.getElementById("alt-candidate"),
   altLogBody: document.getElementById("alt-log-body"),
+  altSectionScore: document.getElementById("alt-section-score"),
   fluencyTStatus: document.getElementById("fluency-t-status"),
   fluencyTCountdown: document.getElementById("fluency-t-countdown"),
   fluencyTStartBtn: document.getElementById("fluency-t-start-btn"),
@@ -226,6 +257,18 @@ const dom = {
   fluencyTLiveWords: document.getElementById("fluency-t-live-words"),
   fluencyTScore: document.getElementById("fluency-t-score"),
   fluencyTLogBody: document.getElementById("fluency-t-log-body"),
+  fluencyTScoreLLMBtn: document.getElementById("fluency-t-score-llm-btn"),
+  fluencyTProcessedNotes: document.getElementById("fluency-t-processed-notes"),
+  fluencyTRawTotal: document.getElementById("fluency-t-raw-total"),
+  fluencyTProcessedTotal: document.getElementById("fluency-t-processed-total"),
+  fluencySectionScore: document.getElementById("fluency-section-score"),
+  fluencyTSectionScore: document.getElementById("fluency-t-section-score"),
+  fluencyScoreLLMBtn: document.getElementById("fluency-score-llm-btn"),
+  fluencyScorerUrl: window.FLUENCY_SCORER_URL || "",
+  fluencyTScorerUrl: window.FLUENCY_T_SCORER_URL || "",
+  fluencyProcessedNotes: document.getElementById("fluency-processed-notes"),
+  fluencyRawTotal: document.getElementById("fluency-raw-total"),
+  fluencyProcessedTotal: document.getElementById("fluency-processed-total"),
   dotsStatus: document.getElementById("dots-status"),
   dotsProgressCount: document.getElementById("dots-progress-count"),
   dotsProgressFill: document.getElementById("dots-progress-fill"),
@@ -238,6 +281,7 @@ const dom = {
   dotsMatchStatus: document.getElementById("dots-match-status"),
   dotsCandidate: document.getElementById("dots-candidate"),
   dotsLogBody: document.getElementById("dots-log-body"),
+  dotsSectionScore: document.getElementById("dots-section-score"),
   cubesStatus: document.getElementById("cubes-status"),
   cubesProgressCount: document.getElementById("cubes-progress-count"),
   cubesProgressFill: document.getElementById("cubes-progress-fill"),
@@ -250,6 +294,7 @@ const dom = {
   cubesMatchStatus: document.getElementById("cubes-match-status"),
   cubesCandidate: document.getElementById("cubes-candidate"),
   cubesLogBody: document.getElementById("cubes-log-body"),
+  cubesSectionScore: document.getElementById("cubes-section-score"),
   sectionScore: document.getElementById("section-score"),
   numberlocStatus: document.getElementById("numberloc-status"),
   numberlocProgressCount: document.getElementById("numberloc-progress-count"),
@@ -262,7 +307,37 @@ const dom = {
   numberlocLiveWords: document.getElementById("numberloc-live-words"),
   numberlocMatchStatus: document.getElementById("numberloc-match-status"),
   numberlocCandidate: document.getElementById("numberloc-candidate"),
-  numberlocLogBody: document.getElementById("numberloc-log-body")
+  numberlocLogBody: document.getElementById("numberloc-log-body"),
+  numberlocSectionScore: document.getElementById("numberloc-section-score"),
+  sentenceInputs: Array.from(document.querySelectorAll(".sentence-input")),
+  sentenceScoreCells: Array.from(document.querySelectorAll(".sentence-score")),
+  sentenceNoteCells: Array.from(document.querySelectorAll(".sentence-notes")),
+  sentenceRows: Array.from(document.querySelectorAll(".sentence-row")),
+  sentenceScoreLLMBtn: document.getElementById("sentence-score-llm-btn"),
+  sentenceSectionScore: document.getElementById("sentence-section-score"),
+  sentenceStartBtn: document.getElementById("sentence-start-btn"),
+  sentenceStopBtn: document.getElementById("sentence-stop-btn"),
+  sentenceNextBtn: document.getElementById("sentence-next-btn"),
+  sentenceActiveLabel: document.getElementById("sentence-active-label"),
+  sentenceLiveWords: document.getElementById("sentence-live-words"),
+  scoreLangNaming: document.getElementById("score-lang-naming"),
+  scoreLangComp: document.getElementById("score-lang-comp"),
+  scoreLangSpell: document.getElementById("score-lang-spell"),
+  scoreFluencyS: document.getElementById("score-fluency-s"),
+  scoreFluencyT: document.getElementById("score-fluency-t"),
+  scoreExecDigits: document.getElementById("score-exec-digits"),
+  scoreExecAlt: document.getElementById("score-exec-alt"),
+  scoreExecSentence: document.getElementById("score-exec-sentence"),
+  scoreSocial: document.getElementById("score-social"),
+  scoreAlsSpecific: document.getElementById("score-als-specific"),
+  scoreMemoryImmediate: document.getElementById("score-memory-immediate"),
+  scoreMemoryDelayed: document.getElementById("score-memory-delayed"),
+  scoreMemoryRecog: document.getElementById("score-memory-recog"),
+  scoreVisuoDots: document.getElementById("score-visuo-dots"),
+  scoreVisuoCubes: document.getElementById("score-visuo-cubes"),
+  scoreVisuoNumberloc: document.getElementById("score-visuo-numberloc"),
+  scoreAlsNonspecific: document.getElementById("score-als-nonspecific"),
+  scoreEcasTotal: document.getElementById("score-ecas-total")
 };
 
 const itemStates = items.map(() => ({
@@ -304,7 +379,7 @@ let altIndex = 0;
 let dotsIndex = 0;
 let cubesIndex = 0;
 let numberlocIndex = 0;
-let captureContext = null; // { type: "naming" | "comprehension" | "spelling" | "story" | "fluency" | "fluencyT" | "digits" | "alternation" | "dots" | "cubes" | "numberloc" }
+let captureContext = null; // { type: "naming" | "comprehension" | "spelling" | "story" | "fluency" | "fluencyT" | "digits" | "alternation" | "dots" | "cubes" | "numberloc" | "sentence" }
 const storyState = {
   status: "pending",
   tokens: [],
@@ -339,7 +414,9 @@ const fluencyState = {
   entries: [],
   countdownMs: 60000,
   timer: { remainingMs: 60000, endTime: null, rafId: null, startTime: null },
-  uniqueWords: new Set()
+  uniqueWords: new Set(),
+  processedWords: [],
+  processedNotes: []
 };
 const digitStates = digitTrials.map(() => ({
   entries: [],
@@ -367,7 +444,9 @@ const fluencyTState = {
   entries: [],
   countdownMs: 60000,
   timer: { remainingMs: 60000, endTime: null, rafId: null, startTime: null },
-  uniqueWords: new Set()
+  uniqueWords: new Set(),
+  processedWords: [],
+  processedNotes: []
 };
 const dotsStates = dotTrials.map(() => ({
   entries: [],
@@ -490,6 +569,17 @@ function bindControls() {
   if (dom.storyScoreBtn) {
     dom.storyScoreBtn.addEventListener("click", scoreStoryWithLLM);
   }
+  if (dom.storyScoreDeterministicBtn) {
+    dom.storyScoreDeterministicBtn.addEventListener("click", () => {
+      if (!storyState.entries.length) {
+        alert("Capture the participant's story recall before scoring.");
+        return;
+      }
+      const transcript = getStoryTranscript();
+      const result = keywordScoreStory(transcript);
+      applyStoryScore(result);
+    });
+  }
   if (document.getElementById("fluency-start-btn")) {
     document.getElementById("fluency-start-btn").addEventListener("click", startFluencyListening);
   }
@@ -499,14 +589,20 @@ function bindControls() {
   if (document.getElementById("fluency-reset-btn")) {
     document.getElementById("fluency-reset-btn").addEventListener("click", resetFluency);
   }
+  if (dom.fluencyScoreLLMBtn) {
+    dom.fluencyScoreLLMBtn.addEventListener("click", scoreFluencyWithLLM);
+  }
+  if (dom.fluencyTScoreLLMBtn) {
+    dom.fluencyTScoreLLMBtn.addEventListener("click", scoreFluencyTWithLLM);
+  }
   if (dom.digitsStartBtn) {
     dom.digitsStartBtn.addEventListener("click", startDigitsListening);
   }
   if (dom.digitsStopBtn) {
     dom.digitsStopBtn.addEventListener("click", stopDigitsListening);
   }
-  if (dom.digitsSubmitBtn) {
-    dom.digitsSubmitBtn.addEventListener("click", submitDigits);
+  if (dom.digitsPrevBtn) {
+    dom.digitsPrevBtn.addEventListener("click", () => moveDigits(digitsIndex - 1));
   }
   if (dom.digitsNextBtn) {
     dom.digitsNextBtn.addEventListener("click", () => moveDigits(digitsIndex + 1));
@@ -549,26 +645,6 @@ function bindControls() {
   if (dom.altResetBtn) {
     dom.altResetBtn.addEventListener("click", resetAlternation);
   }
-  if (dom.altManualInput) {
-    dom.altManualInput.addEventListener("input", event => {
-      const state = alternationStates[altIndex];
-      state.typedAnswer = event.target.value || "";
-      if (state.status === "completed") {
-        state.status = "pending";
-      }
-      evaluateAlternation(state, alternationTrials[altIndex]);
-      updateAlternationUI();
-    });
-  }
-  if (dom.altManualClear) {
-    dom.altManualClear.addEventListener("click", () => {
-      dom.altManualInput.value = "";
-      const state = alternationStates[altIndex];
-      state.typedAnswer = "";
-      evaluateAlternation(state, alternationTrials[altIndex]);
-      updateAlternationUI();
-    });
-  }
   if (dom.fluencyTStartBtn) {
     dom.fluencyTStartBtn.addEventListener("click", startFluencyTListening);
   }
@@ -589,6 +665,18 @@ function bindControls() {
   }
   if (dom.dotsResetBtn) {
     dom.dotsResetBtn.addEventListener("click", resetDots);
+  }
+  if (dom.sentenceScoreLLMBtn) {
+    dom.sentenceScoreLLMBtn.addEventListener("click", scoreSentencesWithLLM);
+  }
+  if (dom.sentenceStartBtn) {
+    dom.sentenceStartBtn.addEventListener("click", startSentenceListening);
+  }
+  if (dom.sentenceStopBtn) {
+    dom.sentenceStopBtn.addEventListener("click", stopSentenceListening);
+  }
+  if (dom.sentenceNextBtn) {
+    dom.sentenceNextBtn.addEventListener("click", () => moveSentence(1));
   }
   if (dom.cubesStartBtn) {
     dom.cubesStartBtn.addEventListener("click", startCubesListening);
@@ -746,7 +834,7 @@ function loadSpelling(index) {
   const boundedIndex = ((index % spellingWords.length) + spellingWords.length) % spellingWords.length;
   spellIndex = boundedIndex;
   const target = spellingWords[spellIndex];
-  dom.spellWord.textContent = target.charAt(0) + target.slice(1).toLowerCase();
+  dom.spellWord.textContent = spellingWordLabels[spellIndex] || target.charAt(0) + target.slice(1).toLowerCase();
   dom.spellProgressCount.textContent = `${spellIndex + 1} / ${spellingWords.length}`;
   dom.spellManualInput.value = spellingStates[spellIndex].typedAnswer || "";
   updateSpellingUI();
@@ -758,7 +846,9 @@ function loadDigits(index) {
   const target = digitTrials[digitsIndex];
   dom.digitsTrialSeq.textContent = target;
   dom.digitsProgressCount.textContent = `${digitsIndex + 1} / ${digitTrials.length}`;
-  dom.digitsManualInput.value = digitStates[digitsIndex].typedAnswer || "";
+  if (dom.digitsManualInput) {
+    dom.digitsManualInput.value = digitStates[digitsIndex].typedAnswer || "";
+  }
   updateDigitsUI();
 }
 
@@ -768,7 +858,6 @@ function loadAlternation(index) {
   const target = alternationTrials[altIndex];
   dom.altTarget.textContent = `${target.number} - ${target.letter}`;
   dom.altProgressCount.textContent = `${altIndex + 1} / ${alternationTrials.length}`;
-  dom.altManualInput.value = alternationStates[altIndex].typedAnswer || "";
   updateAlternationUI();
 }
 
@@ -819,6 +908,9 @@ function startFluencyListening() {
   fluencyState.tokens = [];
   fluencyState.entries = [];
   fluencyState.uniqueWords = new Set();
+  fluencyState.processedWords = [];
+  fluencyState.processedNotes = [];
+  fluencyState.processedWords = [];
   fluencyState.timer.remainingMs = 60000;
   fluencyState.timer.startTime = null;
   fluencyState.timer.endTime = Date.now() + 60000;
@@ -851,6 +943,8 @@ function startFluencyTListening() {
   fluencyTState.tokens = [];
   fluencyTState.entries = [];
   fluencyTState.uniqueWords = new Set();
+  fluencyTState.processedWords = [];
+  fluencyTState.processedNotes = [];
   fluencyTState.timer.remainingMs = 60000;
   fluencyTState.timer.startTime = null;
   fluencyTState.timer.endTime = Date.now() + 60000;
@@ -890,6 +984,12 @@ function finalizeFluencyTCapture() {
     cancelAnimationFrame(fluencyTState.timer.rafId);
     fluencyTState.timer.rafId = null;
   }
+  if (!fluencyTState.processedWords) {
+    fluencyTState.processedWords = [];
+  }
+  if (!fluencyTState.processedNotes) {
+    fluencyTState.processedNotes = [];
+  }
   updateFluencyTUI();
 }
 
@@ -909,6 +1009,8 @@ function resetFluencyT() {
   fluencyTState.timer.remainingMs = 60000;
   fluencyTState.timer.endTime = null;
   fluencyTState.timer.startTime = null;
+  fluencyTState.processedWords = [];
+  fluencyTState.processedNotes = [];
   updateFluencyTUI();
 }
 
@@ -1193,6 +1295,8 @@ function resetFluency() {
   fluencyState.tokens = [];
   fluencyState.entries = [];
   fluencyState.uniqueWords = new Set();
+  fluencyState.processedWords = [];
+  fluencyState.processedNotes = [];
   fluencyState.timer.remainingMs = 60000;
   fluencyState.timer.endTime = null;
   fluencyState.timer.startTime = null;
@@ -1269,7 +1373,6 @@ function submitAlternation() {
     return;
   }
   const state = alternationStates[altIndex];
-  state.typedAnswer = dom.altManualInput.value.trim();
   evaluateAlternation(state, alternationTrials[altIndex]);
   state.status = "completed";
   state.timestamp = Date.now();
@@ -1305,7 +1408,6 @@ function resetAlternation() {
   state.correct = false;
   state.timestamp = null;
   alternationHalted = false;
-  dom.altManualInput.value = "";
   updateAlternationUI();
 }
 
@@ -1365,11 +1467,16 @@ function finalizeDigitsCapture() {
     state.typedAnswer = state.entries[state.entries.length - 1].text;
   }
   updateDigitsUI();
+  if (digitsIndex < digitTrials.length - 1) {
+    loadDigits(digitsIndex + 1);
+  }
 }
 
 function submitDigits() {
   const state = digitStates[digitsIndex];
-  state.typedAnswer = dom.digitsManualInput.value.trim();
+  if (dom.digitsManualInput) {
+    state.typedAnswer = dom.digitsManualInput.value.trim();
+  }
   evaluateDigits(state, digitTrials[digitsIndex]);
   state.status = "completed";
   state.timestamp = Date.now();
@@ -1378,8 +1485,8 @@ function submitDigits() {
 
 function moveDigits(index) {
   const state = digitStates[digitsIndex];
-  if (state.status === "pending" && (state.digits.length || state.typedAnswer)) {
-    submitDigits();
+  if (state.status === "pending" && (state.digits.length || state.entries.length)) {
+    finalizeDigitsCapture();
   }
   loadDigits(index);
 }
@@ -1674,35 +1781,123 @@ async function scoreStoryWithLLM() {
     alert("Capture the participant's story recall before scoring.");
     return;
   }
-  if (dom.storyScoreBtn) {
-    dom.storyScoreBtn.disabled = true;
-    dom.storyScoreBtn.textContent = "Scoring...";
-  }
   try {
-    const transcript = getStoryTranscript();
     if (!STORY_SCORER_URL) {
-      // Fallback: simple keyword scoring when no LLM endpoint is configured.
-      const fallback = keywordScoreStory(transcript);
-      applyStoryScore(fallback);
-    } else {
-      const response = await fetch(STORY_SCORER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript })
-      });
-      if (!response.ok) {
-        throw new Error(`Scorer returned ${response.status}`);
-      }
-      const data = await response.json();
-      applyStoryScore(data);
+      alert("Set window.STORY_SCORER_URL to your scoring endpoint before using LLM scoring.");
+      return;
     }
+    if (dom.storyScoreBtn) {
+      dom.storyScoreBtn.disabled = true;
+      dom.storyScoreBtn.textContent = "Scoring...";
+    }
+    const transcript = getStoryTranscript();
+    console.log("POSTing story transcript to scorer", { url: STORY_SCORER_URL, length: transcript.length });
+    const response = await fetch(STORY_SCORER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Scorer HTTP error", response.status, text);
+      throw new Error(`Scorer returned ${response.status}`);
+    }
+    const data = await response.json();
+    console.log("Scorer response", data);
+    applyStoryScore(data);
   } catch (err) {
     console.error("Story scoring failed", err);
     alert("Story scoring failed. Check the console and scorer configuration.");
   } finally {
     if (dom.storyScoreBtn) {
       dom.storyScoreBtn.disabled = false;
-      dom.storyScoreBtn.textContent = "Score with LLM";
+      dom.storyScoreBtn.textContent = "Score with AI Assistant";
+    }
+  }
+}
+
+async function scoreFluencyWithLLM() {
+  if (!fluencyState.entries.length) {
+    alert("Capture fluency words before scoring.");
+    return;
+  }
+  const url = dom.fluencyScorerUrl || window.FLUENCY_SCORER_URL;
+  if (!url) {
+    alert("Set window.FLUENCY_SCORER_URL to your scoring endpoint before using LLM scoring.");
+    return;
+  }
+  if (dom.fluencyScoreLLMBtn) {
+    dom.fluencyScoreLLMBtn.disabled = true;
+    dom.fluencyScoreLLMBtn.textContent = "Scoring...";
+  }
+  try {
+    const words = fluencyState.entries.map(entry => entry.word);
+    console.log("POSTing fluency words to scorer", { url, count: words.length });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ words })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Fluency scorer HTTP error", response.status, text);
+      throw new Error(`Fluency scorer returned ${response.status}`);
+    }
+    const data = await response.json();
+    console.log("Fluency scorer response", data);
+    fluencyState.processedWords = Array.isArray(data.processed_words) ? data.processed_words : [];
+    fluencyState.processedNotes = Array.isArray(data.rationale) ? data.rationale : [];
+    updateFluencyUI();
+  } catch (err) {
+    console.error("Fluency LLM scoring failed", err);
+    alert("Fluency scoring failed. Check console/backend.");
+  } finally {
+    if (dom.fluencyScoreLLMBtn) {
+      dom.fluencyScoreLLMBtn.disabled = false;
+      dom.fluencyScoreLLMBtn.textContent = "Score with AI Assistant";
+    }
+  }
+}
+
+async function scoreFluencyTWithLLM() {
+  if (!fluencyTState.entries.length) {
+    alert("Capture fluency words before scoring.");
+    return;
+  }
+  const url = dom.fluencyTScorerUrl || window.FLUENCY_T_SCORER_URL;
+  if (!url) {
+    alert("Set window.FLUENCY_T_SCORER_URL to your scoring endpoint before using AI scoring.");
+    return;
+  }
+  if (dom.fluencyTScoreLLMBtn) {
+    dom.fluencyTScoreLLMBtn.disabled = true;
+    dom.fluencyTScoreLLMBtn.textContent = "Scoring...";
+  }
+  try {
+    const words = fluencyTState.entries.map(entry => entry.word);
+    console.log("POSTing fluency T words to scorer", { url, count: words.length });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ words })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Fluency T scorer HTTP error", response.status, text);
+      throw new Error(`Fluency T scorer returned ${response.status}`);
+    }
+    const data = await response.json();
+    console.log("Fluency T scorer response", data);
+    fluencyTState.processedWords = Array.isArray(data.processed_words) ? data.processed_words : [];
+    fluencyTState.processedNotes = Array.isArray(data.rationale) ? data.rationale : [];
+    updateFluencyTUI();
+  } catch (err) {
+    console.error("Fluency T AI scoring failed", err);
+    alert("Fluency scoring failed. Check console/backend.");
+  } finally {
+    if (dom.fluencyTScoreLLMBtn) {
+      dom.fluencyTScoreLLMBtn.disabled = false;
+      dom.fluencyTScoreLLMBtn.textContent = "Score with AI Assistant";
     }
   }
 }
@@ -1723,6 +1918,7 @@ function applyStoryScore(result) {
   if (dom.storySectionScore) {
     dom.storySectionScore.textContent = `${total}`;
   }
+  updateScorecard();
 }
 
 function updateStoryScoreFromChecks() {
@@ -1736,6 +1932,7 @@ function updateStoryScoreFromChecks() {
   if (dom.storySectionScore) {
     dom.storySectionScore.textContent = `${total}`;
   }
+  updateScorecard();
 }
 
 function keywordScoreStory(transcript) {
@@ -1940,6 +2137,37 @@ function handleRecognitionResult(event) {
     return;
   }
 
+  if (captureContext.type === "sentence") {
+    if (sentenceState.status !== "listening" && sentenceState.status !== "finishing") {
+      return;
+    }
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      const result = event.results[i];
+      if (!result.isFinal) {
+        continue;
+      }
+      const transcript = result[0].transcript || "";
+      const text = transcript.trim();
+      if (!text) {
+        continue;
+      }
+      const idx = sentenceState.index;
+      const input = dom.sentenceInputs[idx];
+      if (input) {
+        if (!input.value) {
+          input.value = text;
+        } else {
+          input.value = `${input.value} ${text}`.trim();
+        }
+        sentenceState.responses[idx] = input.value;
+      } else {
+        sentenceState.responses[idx] = text;
+      }
+    }
+    updateSentenceUI();
+    return;
+  }
+
   if (captureContext.type === "numberloc") {
     const state = numberlocStates[numberlocIndex];
     if (!state || (state.status !== "listening" && state.status !== "finishing")) {
@@ -2059,12 +2287,13 @@ function handleRecognitionResult(event) {
       const tokens = tokenize(transcript);
       tokens.forEach(token => {
         fluencyTState.tokens.push(token);
+        const entry = {
+          word: token,
+          timestamp: Date.now()
+        };
+        fluencyTState.entries.push(entry);
         if (isValidFluencyWord(token, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)) {
           fluencyTState.uniqueWords.add(token);
-          fluencyTState.entries.push({
-            word: token,
-            timestamp: Date.now()
-          });
         }
       });
     }
@@ -2095,7 +2324,6 @@ function handleRecognitionResult(event) {
     }
     if (!state.typedAnswer && state.entries.length) {
       state.typedAnswer = state.entries[state.entries.length - 1].text;
-      dom.altManualInput.value = state.typedAnswer;
     }
     evaluateAlternation(state, alternationTrials[altIndex]);
     updateAlternationUI();
@@ -2115,12 +2343,13 @@ function handleRecognitionResult(event) {
       const tokens = tokenize(transcript);
       tokens.forEach(token => {
         fluencyState.tokens.push(token);
+        const entry = {
+          word: token,
+          timestamp: Date.now()
+        };
+        fluencyState.entries.push(entry);
         if (isValidFluencyWord(token)) {
           fluencyState.uniqueWords.add(token);
-          fluencyState.entries.push({
-            word: token,
-            timestamp: Date.now()
-          });
         }
       });
     }
@@ -2378,6 +2607,15 @@ function handleRecognitionEnd() {
     }
     if (state.status === "finishing") {
       finalizeNumberLocCapture();
+    }
+  } else if (captureContext.type === "sentence") {
+    if (sentenceState.status === "listening" && !isStopping) {
+      recognition.start();
+      return;
+    }
+    if (sentenceState.status === "finishing") {
+      sentenceState.status = "pending";
+      updateSentenceUI();
     }
   } else if (captureContext.type === "digits") {
     const state = digitStates[digitsIndex];
@@ -2671,27 +2909,66 @@ function updateFluencyUI() {
 
   const logBody = document.getElementById("fluency-log-body");
   if (logBody) {
-    if (!fluencyState.entries.length) {
+    const rawWords = fluencyState.entries.map(entry => entry.word);
+    const processed = fluencyState.processedWords || [];
+    const rowCount = Math.max(rawWords.length, processed.length);
+    if (!rowCount) {
       logBody.innerHTML = '<tr class="empty-row"><td colspan="3">No responses yet.</td></tr>';
     } else {
       const frag = document.createDocumentFragment();
-      fluencyState.entries
-        .slice()
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .forEach((entry, idx) => {
-          const tr = document.createElement("tr");
-          const num = document.createElement("td");
-          num.textContent = idx + 1;
-          const wordTd = document.createElement("td");
-          wordTd.textContent = entry.word;
-          const timeTd = document.createElement("td");
-          timeTd.textContent = formatTime(entry.timestamp);
-          tr.append(num, wordTd, timeTd);
-          frag.appendChild(tr);
-        });
+      for (let i = 0; i < rowCount; i += 1) {
+        const tr = document.createElement("tr");
+        const num = document.createElement("td");
+        num.textContent = i + 1;
+        const rawTd = document.createElement("td");
+        rawTd.textContent = rawWords[i] || "";
+        const scoredTd = document.createElement("td");
+        scoredTd.textContent = processed[i] || "";
+        tr.append(num, rawTd, scoredTd);
+        frag.appendChild(tr);
+      }
       logBody.innerHTML = "";
       logBody.appendChild(frag);
     }
+    if (dom.fluencyRawTotal) {
+      dom.fluencyRawTotal.textContent = rawWords.length ? rawWords.length : "";
+    }
+    if (dom.fluencyProcessedTotal) {
+      dom.fluencyProcessedTotal.textContent = processed.length ? processed.length : "";
+    }
+    if (dom.fluencySectionScore) {
+      dom.fluencySectionScore.textContent = processed.length ? `${processed.length}` : "0";
+    }
+  }
+  renderFluencyNotes();
+  updateScorecard();
+}
+
+function renderFluencyLists() {
+  renderFluencyNotes();
+}
+
+function renderFluencyNotes() {
+  if (!dom.fluencyProcessedNotes) {
+    return;
+  }
+  const notes = fluencyState.processedNotes || [];
+  if (!notes.length) {
+    dom.fluencyProcessedNotes.innerHTML = '<span class="muted">No AI Assistant notes yet.</span>';
+  } else {
+    dom.fluencyProcessedNotes.textContent = notes.join(", ");
+  }
+}
+
+function renderFluencyTNotes() {
+  if (!dom.fluencyTProcessedNotes) {
+    return;
+  }
+  const notes = fluencyTState.processedNotes || [];
+  if (!notes.length) {
+    dom.fluencyTProcessedNotes.innerHTML = '<span class="muted">No AI Assistant notes yet.</span>';
+  } else {
+    dom.fluencyTProcessedNotes.textContent = notes.join(", ");
   }
 }
 
@@ -2749,28 +3026,39 @@ function updateFluencyTUI() {
   }
 
   if (dom.fluencyTLogBody) {
-    if (!fluencyTState.entries.length) {
+    const rawWords = fluencyTState.entries.map(entry => entry.word);
+    const processed = fluencyTState.processedWords || [];
+    const rowCount = Math.max(rawWords.length, processed.length);
+    if (!rowCount) {
       dom.fluencyTLogBody.innerHTML = '<tr class="empty-row"><td colspan="3">No responses yet.</td></tr>';
     } else {
       const frag = document.createDocumentFragment();
-      fluencyTState.entries
-        .slice()
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .forEach((entry, idx) => {
-          const tr = document.createElement("tr");
-          const num = document.createElement("td");
-          num.textContent = idx + 1;
-          const wordTd = document.createElement("td");
-          wordTd.textContent = entry.word;
-          const timeTd = document.createElement("td");
-          timeTd.textContent = formatTime(entry.timestamp);
-          tr.append(num, wordTd, timeTd);
-          frag.appendChild(tr);
-        });
+      for (let i = 0; i < rowCount; i += 1) {
+        const tr = document.createElement("tr");
+        const num = document.createElement("td");
+        num.textContent = i + 1;
+        const rawTd = document.createElement("td");
+        rawTd.textContent = rawWords[i] || "";
+        const scoredTd = document.createElement("td");
+        scoredTd.textContent = processed[i] || "";
+        tr.append(num, rawTd, scoredTd);
+        frag.appendChild(tr);
+      }
       dom.fluencyTLogBody.innerHTML = "";
       dom.fluencyTLogBody.appendChild(frag);
     }
+    if (dom.fluencyTRawTotal) {
+      dom.fluencyTRawTotal.textContent = rawWords.length ? `${rawWords.length}` : "0";
+    }
+    if (dom.fluencyTProcessedTotal) {
+      dom.fluencyTProcessedTotal.textContent = processed.length ? `${processed.length}` : "0";
+    }
+    if (dom.fluencyTSectionScore) {
+      dom.fluencyTSectionScore.textContent = processed.length ? `${processed.length}` : "0";
+    }
   }
+  renderFluencyTNotes();
+  updateScorecard();
 }
 
 function renderComprehensionLog() {
@@ -2900,36 +3188,32 @@ function renderSpellingLog() {
     return;
   }
   const frag = document.createDocumentFragment();
-  let hasRows = false;
+  let total = 0;
   spellingStates.forEach((state, idx) => {
-    if (state.status !== "completed") {
-      return;
-    }
-    hasRows = true;
     const tr = document.createElement("tr");
-    const numberTd = document.createElement("td");
-    numberTd.textContent = idx + 1;
+    const correctTd = document.createElement("td");
+    const label = spellingWordLabels[idx] || spellingWords[idx].charAt(0) + spellingWords[idx].slice(1).toLowerCase();
+    correctTd.textContent = `${idx + 1}. ${label}`;
     const targetTd = document.createElement("td");
-    targetTd.textContent = spellingWords[idx].charAt(0) + spellingWords[idx].slice(1).toLowerCase();
-    const capturedTd = document.createElement("td");
-    capturedTd.textContent =
-      state.spelledCandidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "(blank)");
+    targetTd.textContent =
+      state.spelledCandidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "");
     const resultTd = document.createElement("td");
     const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
+    const statusClass = state.status === "completed" ? (state.correct ? "success" : "miss") : "pending";
+    pill.className = `match-pill ${statusClass}`;
+    pill.textContent = state.status === "completed" ? (state.correct ? "Correct" : "Incorrect") : "Pending";
     resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(numberTd, targetTd, capturedTd, resultTd, timeTd);
+    if (state.status === "completed" && state.correct) {
+      total += 1;
+    }
+    tr.append(correctTd, targetTd, resultTd);
     frag.appendChild(tr);
   });
-  if (!hasRows) {
-    dom.spellLogBody.innerHTML = '<tr class="empty-row"><td colspan="5">No responses yet.</td></tr>';
-    return;
-  }
   dom.spellLogBody.innerHTML = "";
   dom.spellLogBody.appendChild(frag);
+  if (dom.spellSectionScore) {
+    dom.spellSectionScore.textContent = `${total}`;
+  }
 }
 
 function renderStoryUI() {
@@ -3027,8 +3311,8 @@ function updateDigitsUI() {
   if (dom.digitsStopBtn) {
     dom.digitsStopBtn.disabled = state.status !== "listening";
   }
-  if (dom.digitsSubmitBtn) {
-    dom.digitsSubmitBtn.disabled = state.status === "listening";
+  if (dom.digitsPrevBtn) {
+    dom.digitsPrevBtn.disabled = state.status === "listening";
   }
   if (dom.digitsNextBtn) {
     dom.digitsNextBtn.disabled = state.status === "listening";
@@ -3083,34 +3367,35 @@ function renderDigitsLog() {
   if (!dom.digitsLogBody) {
     return;
   }
-  if (!digitStates.some(s => s.status === "completed")) {
-    dom.digitsLogBody.innerHTML = '<tr class="empty-row"><td colspan="5">No responses yet.</td></tr>';
-    return;
-  }
+  let correctCount = 0;
   const frag = document.createDocumentFragment();
   digitStates.forEach((state, idx) => {
-    if (state.status !== "completed") {
-      return;
-    }
     const tr = document.createElement("tr");
     const trialTd = document.createElement("td");
     trialTd.textContent = idx + 1;
     const targetTd = document.createElement("td");
     targetTd.textContent = digitTrials[idx];
     const respTd = document.createElement("td");
-    respTd.textContent = state.candidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "(blank)");
+    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
     const resultTd = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
-    resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(trialTd, targetTd, respTd, resultTd, timeTd);
+    if (state.status === "completed") {
+      const pill = document.createElement("span");
+      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+      pill.textContent = state.correct ? "Correct" : "Incorrect";
+      resultTd.appendChild(pill);
+      if (state.correct) {
+        correctCount += 1;
+      }
+    }
+    tr.append(trialTd, targetTd, respTd, resultTd);
     frag.appendChild(tr);
   });
   dom.digitsLogBody.innerHTML = "";
   dom.digitsLogBody.appendChild(frag);
+  if (dom.digitsSectionScore) {
+    dom.digitsSectionScore.textContent = `${correctCount}`;
+  }
+  updateScorecard();
 }
 
 function evaluateDigits(state, targetSeq) {
@@ -3185,7 +3470,7 @@ function updateAlternationUI() {
 
   const disabledDueToHalt = alternationHalted && state.status !== "listening";
   if (dom.altStartBtn) {
-    dom.altStartBtn.disabled = !speechSupported || state.status === "listening" || alternationHalted;
+    dom.altStartBtn.disabled = !speechSupported || state.status === "listening";
   }
   if (dom.altStopBtn) {
     dom.altStopBtn.disabled = state.status !== "listening";
@@ -3251,34 +3536,35 @@ function renderAlternationLog() {
   if (!dom.altLogBody) {
     return;
   }
-  if (!alternationStates.some(s => s.status === "completed")) {
-    dom.altLogBody.innerHTML = '<tr class="empty-row"><td colspan="5">No responses yet.</td></tr>';
-    return;
-  }
+  let correctCount = 0;
   const frag = document.createDocumentFragment();
   alternationStates.forEach((state, idx) => {
-    if (state.status !== "completed") {
-      return;
-    }
     const tr = document.createElement("tr");
     const trialTd = document.createElement("td");
     trialTd.textContent = idx + 1;
     const targetTd = document.createElement("td");
     targetTd.textContent = `${alternationTrials[idx].number}-${alternationTrials[idx].letter}`;
     const respTd = document.createElement("td");
-    respTd.textContent = state.candidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "(blank)");
+    respTd.textContent = state.candidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "");
     const resultTd = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
-    resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(trialTd, targetTd, respTd, resultTd, timeTd);
+    if (state.status === "completed") {
+      const pill = document.createElement("span");
+      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+      pill.textContent = state.correct ? "Correct" : "Incorrect";
+      resultTd.appendChild(pill);
+      if (state.correct) {
+        correctCount += 1;
+      }
+    }
+    tr.append(trialTd, targetTd, respTd, resultTd);
     frag.appendChild(tr);
   });
   dom.altLogBody.innerHTML = "";
   dom.altLogBody.appendChild(frag);
+  if (dom.altSectionScore) {
+    dom.altSectionScore.textContent = `${correctCount}`;
+  }
+  updateScorecard();
 }
 
 function evaluateAlternation(state, trial) {
@@ -3420,34 +3706,34 @@ function renderCubesLog() {
   if (!dom.cubesLogBody) {
     return;
   }
-  if (!cubesStates.some(s => s.status === "completed")) {
-    dom.cubesLogBody.innerHTML = '<tr class="empty-row"><td colspan="5">No responses yet.</td></tr>';
-    return;
-  }
   const frag = document.createDocumentFragment();
   cubesStates.forEach((state, idx) => {
-    if (state.status !== "completed") {
-      return;
-    }
     const tr = document.createElement("tr");
     const boxTd = document.createElement("td");
     boxTd.textContent = idx + 1;
     const targetTd = document.createElement("td");
     targetTd.textContent = cubeTrials[idx].answer;
     const respTd = document.createElement("td");
-    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "(blank)");
+    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
     const resultTd = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
-    resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(boxTd, targetTd, respTd, resultTd, timeTd);
+    if (state.status === "completed") {
+      const pill = document.createElement("span");
+      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+      pill.textContent = state.correct ? "Correct" : "Recorded";
+      resultTd.appendChild(pill);
+    } else {
+      resultTd.textContent = "";
+    }
+    tr.append(boxTd, targetTd, respTd, resultTd);
     frag.appendChild(tr);
   });
   dom.cubesLogBody.innerHTML = "";
   dom.cubesLogBody.appendChild(frag);
+  if (dom.cubesSectionScore) {
+    const totalCorrect = cubesStates.filter(s => s.correct).length;
+    dom.cubesSectionScore.textContent = `${totalCorrect}`;
+  }
+  updateScorecard();
 }
 
 function evaluateCubes(state, trial) {
@@ -3544,35 +3830,226 @@ function renderNumberLocLog() {
   if (!dom.numberlocLogBody) {
     return;
   }
-  if (!numberlocStates.some(s => s.status === "completed")) {
-    dom.numberlocLogBody.innerHTML = '<tr class="empty-row"><td colspan="5">No responses yet.</td></tr>';
-    return;
-  }
   const frag = document.createDocumentFragment();
   numberlocStates.forEach((state, idx) => {
-    if (state.status !== "completed") {
-      return;
-    }
     const tr = document.createElement("tr");
     const boxTd = document.createElement("td");
     boxTd.textContent = idx + 1;
     const targetTd = document.createElement("td");
     targetTd.textContent = numberLocTrials[idx].answer;
     const respTd = document.createElement("td");
-    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "(blank)");
+    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
     const resultTd = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
-    resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(boxTd, targetTd, respTd, resultTd, timeTd);
+    if (state.status === "completed") {
+      const pill = document.createElement("span");
+      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+      pill.textContent = state.correct ? "Correct" : "Recorded";
+      resultTd.appendChild(pill);
+    } else {
+      resultTd.textContent = "";
+    }
+    tr.append(boxTd, targetTd, respTd, resultTd);
     frag.appendChild(tr);
   });
   dom.numberlocLogBody.innerHTML = "";
   dom.numberlocLogBody.appendChild(frag);
+  if (dom.numberlocSectionScore) {
+    const totalCorrect = numberlocStates.filter(s => s.correct).length;
+    dom.numberlocSectionScore.textContent = `${totalCorrect}`;
+  }
+  updateScorecard();
 }
+
+async function scoreSentencesWithLLM() {
+  const inputs = dom.sentenceInputs || [];
+  if (!inputs.length) {
+    alert("No sentence inputs found.");
+    return;
+  }
+  const responses = inputs.map((input, idx) => ({
+    prompt: sentencePrompts[idx] || "",
+    response: (input.value || "").trim()
+  }));
+  const url = window.SENTENCE_SCORER_URL;
+  if (!url) {
+    alert("Set window.SENTENCE_SCORER_URL before scoring.");
+    return;
+  }
+  if (dom.sentenceScoreLLMBtn) {
+    dom.sentenceScoreLLMBtn.disabled = true;
+    dom.sentenceScoreLLMBtn.textContent = "Scoring...";
+  }
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ responses })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Sentence scorer HTTP error", response.status, text);
+      throw new Error(`Sentence scorer returned ${response.status}`);
+    }
+    const data = await response.json();
+    applySentenceScores(data);
+  } catch (err) {
+    console.error("Sentence scoring failed", err);
+    alert("Sentence scoring failed. Check console/backend.");
+  } finally {
+    if (dom.sentenceScoreLLMBtn) {
+      dom.sentenceScoreLLMBtn.disabled = false;
+      dom.sentenceScoreLLMBtn.textContent = "Score with AI Assistant";
+    }
+  }
+}
+
+function applySentenceScores(result = {}) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  let total = 0;
+  items.forEach((item, idx) => {
+    const scoreCell = dom.sentenceScoreCells[idx];
+    const noteCell = dom.sentenceNoteCells[idx];
+    if (scoreCell) {
+      const scoreVal = typeof item.score === "number" ? item.score : "";
+      scoreCell.textContent = scoreVal === "" ? "" : `${scoreVal}`;
+      if (typeof item.score === "number") {
+        total += item.score;
+      }
+    }
+    if (noteCell) {
+      noteCell.textContent = item.rationale || "";
+    }
+  });
+  if (dom.sentenceSectionScore) {
+    dom.sentenceSectionScore.textContent = `${total}`;
+  }
+}
+
+function syncSentenceResponsesFromInputs() {
+  (dom.sentenceInputs || []).forEach((input, idx) => {
+    sentenceState.responses[idx] = input.value || "";
+  });
+  updateSentenceUI();
+}
+function startSentenceListening() {
+  if (!speechSupported || !recognition) {
+    return;
+  }
+  if (captureContext && captureContext.type !== "sentence") {
+    return;
+  }
+  if (sentenceState.status === "listening") {
+    return;
+  }
+  sentenceState.status = "listening";
+  captureContext = { type: "sentence" };
+  isStopping = false;
+  recognition.start();
+  updateSentenceUI();
+}
+
+function stopSentenceListening() {
+  if (sentenceState.status !== "listening") {
+    return;
+  }
+  isStopping = true;
+  sentenceState.status = "pending";
+  if (recognition) {
+    recognition.stop();
+  }
+  captureContext = null;
+  updateSentenceUI();
+}
+
+function moveSentence(delta = 1) {
+  const len = sentencePrompts.length;
+  sentenceState.index = ((sentenceState.index + delta) % len + len) % len;
+  updateSentenceUI();
+}
+
+function updateSentenceUI() {
+  if (dom.sentenceActiveLabel) {
+    dom.sentenceActiveLabel.textContent = `${sentenceState.index + 1}`;
+  }
+  if (dom.sentenceStartBtn) {
+    dom.sentenceStartBtn.disabled = !speechSupported || sentenceState.status === "listening";
+  }
+  if (dom.sentenceStopBtn) {
+    dom.sentenceStopBtn.disabled = sentenceState.status !== "listening";
+  }
+  if (dom.sentenceNextBtn) {
+    dom.sentenceNextBtn.disabled = sentenceState.status === "listening";
+  }
+  if (dom.sentenceRows && dom.sentenceRows.length) {
+    dom.sentenceRows.forEach((row, idx) => {
+      row.classList.toggle("active-row", idx === sentenceState.index);
+    });
+  }
+  if (dom.sentenceLiveWords) {
+    const val = dom.sentenceInputs[sentenceState.index]?.value || "";
+    dom.sentenceLiveWords.textContent = val || "No responses yet.";
+  }
+}
+
+function getScoreValue(el, max) {
+  if (!el) {
+    return 0;
+  }
+  const match = `${el.textContent}`.match(/(\\d+)/);
+  const val = match ? parseInt(match[1], 10) : 0;
+  return Number.isFinite(val) ? Math.max(0, Math.min(val, max)) : 0;
+}
+
+function updateScorecard() {
+  const naming = getScoreValue(dom.sectionScore, 8);
+  const comp = getScoreValue(dom.compSectionScore, 8);
+  const spell = getScoreValue(dom.spellSectionScore, 12);
+  const fluS = getScoreValue(dom.fluencySectionScore, 12);
+  const fluT = getScoreValue(dom.fluencyTSectionScore, 12);
+  const digits = getScoreValue(dom.digitsSectionScore, 12);
+  const alt = getScoreValue(dom.altSectionScore, 12);
+  const sentence = getScoreValue(dom.sentenceSectionScore, 12);
+  const social = 0; // not implemented
+  const story = getScoreValue(dom.storySectionScore, 10); // immediate recall
+  const memoryDelayed = 0; // not implemented
+  const memoryRecog = 0; // not implemented
+  const dots = getScoreValue(dom.dotsSectionScore, 4);
+  const cubes = getScoreValue(dom.cubesSectionScore, 4);
+  const numberloc = getScoreValue(dom.numberlocSectionScore, 4);
+
+  if (dom.scoreLangNaming) dom.scoreLangNaming.textContent = `${naming}/8`;
+  if (dom.scoreLangComp) dom.scoreLangComp.textContent = `${comp}/8`;
+  if (dom.scoreLangSpell) dom.scoreLangSpell.textContent = `${spell}/12`;
+  const langTotal = naming + comp + spell;
+  if (dom.scoreFluencyS) dom.scoreFluencyS.textContent = `${fluS}/12`;
+  if (dom.scoreFluencyT) dom.scoreFluencyT.textContent = `${fluT}/12`;
+  const fluTotal = fluS + fluT;
+  if (dom.scoreExecDigits) dom.scoreExecDigits.textContent = `${digits}/12`;
+  if (dom.scoreExecAlt) dom.scoreExecAlt.textContent = `${alt}/12`;
+  if (dom.scoreExecSentence) dom.scoreExecSentence.textContent = `${sentence}/12`;
+  if (dom.scoreSocial) dom.scoreSocial.textContent = `${social}/12`;
+  const execTotal = digits + alt + sentence + social;
+
+  if (dom.scoreMemoryImmediate) dom.scoreMemoryImmediate.textContent = `${story}/10`;
+  if (dom.scoreMemoryDelayed) dom.scoreMemoryDelayed.textContent = `${memoryDelayed}/10`;
+  if (dom.scoreMemoryRecog) dom.scoreMemoryRecog.textContent = `${memoryRecog}/4`;
+  const memoryTotal = story + memoryDelayed + memoryRecog;
+
+  if (dom.scoreVisuoDots) dom.scoreVisuoDots.textContent = `${dots}/4`;
+  if (dom.scoreVisuoCubes) dom.scoreVisuoCubes.textContent = `${cubes}/4`;
+  if (dom.scoreVisuoNumberloc) dom.scoreVisuoNumberloc.textContent = `${numberloc}/4`;
+  const visuoTotal = dots + cubes + numberloc;
+
+  if (dom.scoreAlsSpecific) dom.scoreAlsSpecific.textContent = `${langTotal + fluTotal + execTotal}/100`;
+  if (dom.scoreAlsNonspecific) dom.scoreAlsNonspecific.textContent = `${memoryTotal + visuoTotal}/36`;
+  if (dom.scoreEcasTotal) dom.scoreEcasTotal.textContent = `${langTotal + fluTotal + execTotal + memoryTotal + visuoTotal}/136`;
+}
+
+setInterval(updateScorecard, 1000);
+// Expose for console debugging
+window.updateScorecard = updateScorecard;
+// Run once on load to sync immediately
+updateScorecard();
 
 function evaluateNumberLoc(state, trial) {
   const expected = trial.answer;
@@ -3668,34 +4145,34 @@ function renderDotsLog() {
   if (!dom.dotsLogBody) {
     return;
   }
-  if (!dotsStates.some(s => s.status === "completed")) {
-    dom.dotsLogBody.innerHTML = '<tr class="empty-row"><td colspan="5">No responses yet.</td></tr>';
-    return;
-  }
   const frag = document.createDocumentFragment();
   dotsStates.forEach((state, idx) => {
-    if (state.status !== "completed") {
-      return;
-    }
     const tr = document.createElement("tr");
     const boxTd = document.createElement("td");
     boxTd.textContent = idx + 1;
     const targetTd = document.createElement("td");
     targetTd.textContent = dotTrials[idx].answer;
     const respTd = document.createElement("td");
-    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "(blank)");
+    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
     const resultTd = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-    pill.textContent = state.correct ? "Correct" : "Recorded";
-    resultTd.appendChild(pill);
-    const timeTd = document.createElement("td");
-    timeTd.textContent = state.timestamp ? formatTime(state.timestamp) : "—";
-    tr.append(boxTd, targetTd, respTd, resultTd, timeTd);
+    if (state.status === "completed") {
+      const pill = document.createElement("span");
+      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+      pill.textContent = state.correct ? "Correct" : "Recorded";
+      resultTd.appendChild(pill);
+    } else {
+      resultTd.textContent = "";
+    }
+    tr.append(boxTd, targetTd, respTd, resultTd);
     frag.appendChild(tr);
   });
   dom.dotsLogBody.innerHTML = "";
   dom.dotsLogBody.appendChild(frag);
+  if (dom.dotsSectionScore) {
+    const totalCorrect = dotsStates.filter(s => s.correct).length;
+    dom.dotsSectionScore.textContent = `${totalCorrect}`;
+  }
+  updateScorecard();
 }
 
 function evaluateDots(state, trial) {

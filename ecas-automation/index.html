@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ECAS Naming Exercise - Automated</title>
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      window.STORY_SCORER_URL = window.STORY_SCORER_URL || "http://127.0.0.1:5000/score-story";
+      window.FLUENCY_SCORER_URL = window.FLUENCY_SCORER_URL || "http://127.0.0.1:5000/score-fluency";
+      window.FLUENCY_T_SCORER_URL = window.FLUENCY_T_SCORER_URL || "http://127.0.0.1:5000/score-fluency-t";
+      window.SENTENCE_SCORER_URL = window.SENTENCE_SCORER_URL || "http://127.0.0.1:5000/score-sentences";
+    </script>
   </head>
   <body>
     <div class="app">
@@ -208,7 +214,10 @@
         <div class="log">
           <div class="log-header">
             <p class="eyebrow">Story recall Scoring</p>
-            <button class="ghost" id="story-score-btn">Score with LLM</button>
+            <div class="story-actions">
+              <button class="ghost" id="story-score-deterministic-btn">Score Deterministically</button>
+              <button class="ghost" id="story-score-btn">Score with AI Assistant</button>
+            </div>
           </div>
           <table class="scoring-table">
             <thead>
@@ -280,7 +289,7 @@
       <section class="stage-card" id="spelling-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Language - Spelling</p>
+            <p class="eyebrow">4. Language - Spelling</p>
             <h2>Spoken spelling accuracy</h2>
             <p class="overview">Read the target word, then capture the participant spelling it aloud. You can also type what they spelled.</p>
           </div>
@@ -334,31 +343,89 @@
 
         <div class="log">
           <div class="log-header">
-            <p class="eyebrow">Spelling log</p>
+            <p class="eyebrow">Response log</p>
           </div>
           <table>
             <thead>
               <tr>
-                <th>#</th>
-                <th>Target</th>
-                <th>Captured</th>
-                <th>Result</th>
-                <th>Time</th>
+                <th>Correct Response</th>
+                <th>Participant Response</th>
+                <th>Score</th>
               </tr>
             </thead>
             <tbody id="spell-log-body">
-              <tr class="empty-row">
-                <td colspan="5">No responses yet.</td>
+              <tr>
+                <td>1. Envelope</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>2. Skateboard</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>3. Constructing</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>4. Partner</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>5. Biscuit</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>6. Lawnmower</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>7. Deliver</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>8. Recorded</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>9. Coathanger</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>10. Orchestra</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>11. Screwdriver</td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>12. Brought</td>
+                <td></td>
+                <td></td>
               </tr>
             </tbody>
           </table>
+          <div class="section-score">
+            Section Score (0-12): <span id="spell-section-score">0</span>
+          </div>
         </div>
       </section>
 
       <section class="stage-card" id="fluency-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Verbal Fluency</p>
+            <p class="eyebrow">5. Verbal Fluency - Letter S</p>
             <h2>Letter S (60 seconds)</h2>
             <p class="overview">Start the timer, then capture all unique words beginning with "S". Exclude names, places, and numbers.</p>
           </div>
@@ -389,24 +456,17 @@
           <div id="fluency-live-words" class="live-words"></div>
         </div>
 
-        <div class="result-grid">
-          <div class="result-card">
-            <p class="eyebrow">Score</p>
-            <p class="result-title" id="fluency-score">0 valid words</p>
-            <p class="muted">Duplicates and non-S words are ignored automatically.</p>
-          </div>
-        </div>
-
         <div class="log">
           <div class="log-header">
             <p class="eyebrow">Words captured</p>
+            <button class="ghost" id="fluency-score-llm-btn">Score with AI Assistant</button>
           </div>
           <table>
             <thead>
               <tr>
                 <th>#</th>
-                <th>Word</th>
-                <th>Time</th>
+                <th>Raw Response List</th>
+                <th id="fluency-scored-col">Scored Response List</th>
               </tr>
             </thead>
             <tbody id="fluency-log-body">
@@ -414,14 +474,30 @@
                 <td colspan="3">No responses yet.</td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th>Total</th>
+                <th id="fluency-raw-total"></th>
+                <th id="fluency-processed-total"></th>
+              </tr>
+              <tr>
+                <th colspan="3" style="text-align:right">Section Score (0-12): <span id="fluency-section-score">0</span></th>
+              </tr>
+            </tfoot>
           </table>
+          <div class="fluency-lists">
+            <div>
+              <p class="eyebrow">AI Assistant Notes</p>
+              <div id="fluency-processed-notes" class="notes-box"></div>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="stage-card" id="digits-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Executive - Reverse Digit Span</p>
+            <p class="eyebrow">6. Executive - Reverse Digit Span</p>
             <h2>Section 6: Reverse the spoken numbers</h2>
             <p class="overview">
               Read the trial numbers aloud. Participant repeats them in reverse order. Capture speech and mark correct if the reversed sequence matches exactly.
@@ -459,12 +535,8 @@
             <button class="primary" id="digits-start-btn">Start Listening</button>
             <button class="ghost" id="digits-stop-btn">Stop &amp; Score</button>
           </div>
-          <div class="manual-input-row">
-            <input id="digits-manual-input" type="text" placeholder="Type the participant's response (optional)" />
-            <button id="digits-manual-clear" class="ghost">Clear</button>
-          </div>
           <div class="control-row">
-            <button class="primary" id="digits-submit-btn">Submit</button>
+            <button class="ghost" id="digits-prev-btn">&#8592; Prev trial</button>
             <button class="ghost" id="digits-next-btn">Next trial</button>
             <button class="ghost danger" id="digits-reset-btn">Reset trial</button>
           </div>
@@ -493,15 +565,31 @@
                 <th>Trial</th>
                 <th>Target</th>
                 <th>Response</th>
-                <th>Correct</th>
-                <th>Time</th>
+                <th>Score</th>
               </tr>
             </thead>
             <tbody id="digits-log-body">
-              <tr class="empty-row">
-                <td colspan="5">No responses yet.</td>
-              </tr>
+              <tr><td>1</td><td>2 6</td><td></td><td></td></tr>
+              <tr><td>2</td><td>5 8</td><td></td><td></td></tr>
+              <tr><td>3</td><td>9 3 5</td><td></td><td></td></tr>
+              <tr><td>4</td><td>4 1 6</td><td></td><td></td></tr>
+              <tr><td>5</td><td>7 2 8 4</td><td></td><td></td></tr>
+              <tr><td>6</td><td>9 5 7 3</td><td></td><td></td></tr>
+              <tr><td>7</td><td>6 9 4 2 1</td><td></td><td></td></tr>
+              <tr><td>8</td><td>8 3 2 5 6</td><td></td><td></td></tr>
+              <tr><td>9</td><td>8 1 3 5 7 9</td><td></td><td></td></tr>
+              <tr><td>10</td><td>3 6 2 7 3 4</td><td></td><td></td></tr>
+              <tr><td>11</td><td>1 6 9 3 5 8 6</td><td></td><td></td></tr>
+              <tr><td>12</td><td>2 3 6 8 4 9 2</td><td></td><td></td></tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th>Section Score (0-12)</th>
+                <th></th>
+                <th></th>
+                <th id="digits-section-score"></th>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -509,7 +597,7 @@
       <section class="stage-card" id="alternation-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Executive - Alternation</p>
+            <p class="eyebrow">7. Executive - Alternation</p>
             <h2>Section 7: Number/letter switching</h2>
             <p class="overview">
               Start with 1-A, 2-B, 3-C together, then have the participant continue the sequence. Stop administration after the first error.
@@ -549,10 +637,6 @@
             <button class="primary" id="alt-start-btn">Start Listening</button>
             <button class="ghost" id="alt-stop-btn">Stop &amp; Score</button>
           </div>
-          <div class="manual-input-row">
-            <input id="alt-manual-input" type="text" placeholder="Type the participant's response (optional)" />
-            <button id="alt-manual-clear" class="ghost">Clear</button>
-          </div>
           <div class="control-row">
             <button class="primary" id="alt-submit-btn">Submit</button>
             <button class="ghost" id="alt-next-btn">Next trial</button>
@@ -584,15 +668,31 @@
                 <th>Trial</th>
                 <th>Target</th>
                 <th>Response</th>
-                <th>Correct</th>
-                <th>Time</th>
+                <th>Score</th>
               </tr>
             </thead>
             <tbody id="alt-log-body">
-              <tr class="empty-row">
-                <td colspan="5">No responses yet.</td>
-              </tr>
+              <tr><td>1</td><td>4 - D</td><td></td><td></td></tr>
+              <tr><td>2</td><td>5 - E</td><td></td><td></td></tr>
+              <tr><td>3</td><td>6 - F</td><td></td><td></td></tr>
+              <tr><td>4</td><td>7 - G</td><td></td><td></td></tr>
+              <tr><td>5</td><td>8 - H</td><td></td><td></td></tr>
+              <tr><td>6</td><td>9 - I</td><td></td><td></td></tr>
+              <tr><td>7</td><td>10 - J</td><td></td><td></td></tr>
+              <tr><td>8</td><td>11 - K</td><td></td><td></td></tr>
+              <tr><td>9</td><td>12 - L</td><td></td><td></td></tr>
+              <tr><td>10</td><td>13 - M</td><td></td><td></td></tr>
+              <tr><td>11</td><td>14 - N</td><td></td><td></td></tr>
+              <tr><td>12</td><td>15 - O</td><td></td><td></td></tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th>Section Score (0-12)</th>
+                <th></th>
+                <th></th>
+                <th id="alt-section-score"></th>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -600,7 +700,7 @@
       <section class="stage-card" id="fluency-t-card">
         <div class="stage-header">
           <div>
-            <p class="eyebrow">Verbal Fluency</p>
+            <p class="eyebrow">8. Verbal Fluency - Letter T</p>
             <h2>Letter T (4-letter words, 60 seconds)</h2>
             <p class="overview">Start the timer, capture unique 4-letter words beginning with "T". Exclude names, places, numbers, and non-words.</p>
           </div>
@@ -642,13 +742,14 @@
         <div class="log">
           <div class="log-header">
             <p class="eyebrow">Words captured</p>
+            <button class="ghost" id="fluency-t-score-llm-btn">Score with AI Assistant</button>
           </div>
           <table>
             <thead>
               <tr>
                 <th>#</th>
-                <th>Word</th>
-                <th>Time</th>
+                <th>Raw Response List</th>
+                <th id="fluency-t-scored-col">Scored Response List</th>
               </tr>
             </thead>
             <tbody id="fluency-t-log-body">
@@ -656,7 +757,23 @@
                 <td colspan="3">No responses yet.</td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th>Total</th>
+                <th id="fluency-t-raw-total"></th>
+                <th id="fluency-t-processed-total"></th>
+              </tr>
+              <tr>
+                <th colspan="3" style="text-align:right">Section Score (0-12): <span id="fluency-t-section-score">0</span></th>
+              </tr>
+            </tfoot>
           </table>
+          <div class="fluency-lists">
+            <div>
+              <p class="eyebrow">AI Assistant Notes</p>
+              <div id="fluency-t-processed-notes" class="notes-box"></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -720,16 +837,20 @@
               <tr>
                 <th>Box</th>
                 <th>Target</th>
-                <th>Response</th>
+                <th>Participant Response</th>
                 <th>Correct</th>
-                <th>Time</th>
               </tr>
             </thead>
             <tbody id="dots-log-body">
               <tr class="empty-row">
-                <td colspan="5">No responses yet.</td>
+                <td colspan="4">No responses yet.</td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" style="text-align:right">Section Score (0-4): <span id="dots-section-score">0</span></th>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -794,16 +915,20 @@
               <tr>
                 <th>#</th>
                 <th>Target</th>
-                <th>Response</th>
+                <th>Participant Response</th>
                 <th>Correct</th>
-                <th>Time</th>
               </tr>
             </thead>
             <tbody id="cubes-log-body">
               <tr class="empty-row">
-                <td colspan="5">No responses yet.</td>
+                <td colspan="4">No responses yet.</td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" style="text-align:right">Section Score (0-4): <span id="cubes-section-score">0</span></th>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -869,20 +994,223 @@
               <tr>
                 <th>#</th>
                 <th>Target</th>
-                <th>Response</th>
+                <th>Participant Response</th>
                 <th>Correct</th>
-                <th>Time</th>
               </tr>
             </thead>
             <tbody id="numberloc-log-body">
               <tr class="empty-row">
-                <td colspan="5">No responses yet.</td>
+                <td colspan="4">No responses yet.</td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" style="text-align:right">Section Score (0-4): <span id="numberloc-section-score">0</span></th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="sentence-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Executive - Sentence Completion</p>
+            <h2>Section 12: Sentence Completion</h2>
+            <p class="overview">
+              Complete the sentences with words that do not make sense in context. Take the first answer; do not allow self-correction. If a contextual answer is given, remind once that the response must be unrelated.
+            </p>
+          </div>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Say</p>
+          <p class="prompt">
+            “Listen carefully to these sentences and as soon as I have finished reading them, please tell me a word that finishes the sentence as quickly as possible but does not make sense. For example, ‘John cut his hand with the sharp…orange’.”
+          </p>
+          <p class="muted">If no response within 20 seconds, move to the next question. Use the first answer only.</p>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Sentence log</p>
+            <div class="controls">
+              <button class="primary" id="sentence-start-btn">Start Listening</button>
+              <button class="ghost" id="sentence-stop-btn">Stop</button>
+              <button class="ghost" id="sentence-next-btn">Next sentence</button>
+              <button class="ghost" id="sentence-score-llm-btn">Score with AI Assistant</button>
+            </div>
+            <p class="muted">Active sentence: <span id="sentence-active-label">1</span> / 6</p>
+          </div>
+          <div class="live-area" aria-live="polite">
+            <p class="eyebrow">Live transcription</p>
+            <div id="sentence-live-words" class="live-words"></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Prompt</th>
+                <th>Participant Response</th>
+                <th>Score (0-2)</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="sentence-log-body">
+              <tr class="sentence-row">
+                <td>1</td>
+                <td>The mailman knocked on the</td>
+                <td><input type="text" data-sentence-index="0" class="sentence-input" /></td>
+                <td class="sentence-score" data-sentence-index="0"></td>
+                <td class="sentence-notes" data-sentence-index="0"></td>
+              </tr>
+              <tr class="sentence-row">
+                <td>2</td>
+                <td>He brought his umbrella with him in case of</td>
+                <td><input type="text" data-sentence-index="1" class="sentence-input" /></td>
+                <td class="sentence-score" data-sentence-index="1"></td>
+                <td class="sentence-notes" data-sentence-index="1"></td>
+              </tr>
+              <tr class="sentence-row">
+                <td>3</td>
+                <td>Sally spread her toast with butter and</td>
+                <td><input type="text" data-sentence-index="2" class="sentence-input" /></td>
+                <td class="sentence-score" data-sentence-index="2"></td>
+                <td class="sentence-notes" data-sentence-index="2"></td>
+              </tr>
+              <tr class="sentence-row">
+                <td>4</td>
+                <td>John went to the barbers to get his hair</td>
+                <td><input type="text" data-sentence-index="3" class="sentence-input" /></td>
+                <td class="sentence-score" data-sentence-index="3"></td>
+                <td class="sentence-notes" data-sentence-index="3"></td>
+              </tr>
+              <tr class="sentence-row">
+                <td>5</td>
+                <td>She dived into the swimming</td>
+                <td><input type="text" data-sentence-index="4" class="sentence-input" /></td>
+                <td class="sentence-score" data-sentence-index="4"></td>
+                <td class="sentence-notes" data-sentence-index="4"></td>
+              </tr>
+              <tr class="sentence-row">
+                <td>6</td>
+                <td>They all went to the local café for something to</td>
+                <td><input type="text" data-sentence-index="5" class="sentence-input" /></td>
+                <td class="sentence-score" data-sentence-index="5"></td>
+                <td class="sentence-notes" data-sentence-index="5"></td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="5" style="text-align: right">Section Score (0-12): <span id="sentence-section-score">0</span></th>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
     </div>
+
+    <hr />
+    <section class="stage-card">
+      <div class="stage-header">
+        <div>
+          <p class="eyebrow">Scores</p>
+          <h2>Overall Scores</h2>
+        </div>
+      </div>
+      <table class="summary-table">
+        <tbody>
+          <tr>
+            <th rowspan="3">Language</th>
+            <td>Naming</td>
+            <td id="score-lang-naming">0/8</td>
+            <th rowspan="3">0/28</th>
+          </tr>
+          <tr>
+            <td>Comprehension</td>
+            <td id="score-lang-comp">0/8</td>
+          </tr>
+          <tr>
+            <td>Spelling</td>
+            <td id="score-lang-spell">0/12</td>
+          </tr>
+          <tr>
+            <th rowspan="2">Verbal Fluency</th>
+            <td>Fluency Letter S</td>
+            <td id="score-fluency-s">0/12</td>
+            <th rowspan="2">0/24</th>
+          </tr>
+          <tr>
+            <td>Fluency Letter T</td>
+            <td id="score-fluency-t">0/12</td>
+          </tr>
+          <tr>
+            <th rowspan="4">Executive</th>
+            <td>Reverse Digit Span</td>
+            <td id="score-exec-digits">0/12</td>
+            <th rowspan="4">0/48</th>
+          </tr>
+          <tr>
+            <td>Alternation</td>
+            <td id="score-exec-alt">0/12</td>
+          </tr>
+          <tr>
+            <td>Sentence Completion</td>
+            <td id="score-exec-sentence">0/12</td>
+          </tr>
+          <tr>
+            <td>Social Cognition</td>
+            <td id="score-social">0/12</td>
+          </tr>
+          <tr style="color:#4d8acb; font-weight:bold;">
+            <td></td>
+            <td>ALS-SPECIFIC:</td>
+            <td></td>
+            <td id="score-als-specific">0/100</td>
+          </tr>
+          <tr>
+            <th rowspan="3">Memory</th>
+            <td>Immediate Recall</td>
+            <td id="score-memory-immediate">0/10</td>
+            <th rowspan="3">0/24</th>
+          </tr>
+          <tr>
+            <td>Delayed Recall</td>
+            <td id="score-memory-delayed">0/10</td>
+          </tr>
+          <tr>
+            <td>Delayed Recognition</td>
+            <td id="score-memory-recog">0/4</td>
+          </tr>
+          <tr>
+            <th rowspan="3">Visuospatial</th>
+            <td>Dot Counting</td>
+            <td id="score-visuo-dots">0/4</td>
+            <th rowspan="3">0/12</th>
+          </tr>
+          <tr>
+            <td>Cube Counting</td>
+            <td id="score-visuo-cubes">0/4</td>
+          </tr>
+          <tr>
+            <td>Number Location</td>
+            <td id="score-visuo-numberloc">0/4</td>
+          </tr>
+          <tr style="color:#4d8acb; font-weight:bold;">
+            <td></td>
+            <td>ALS NON-SPECIFIC:</td>
+            <td></td>
+            <td id="score-als-nonspecific">0/36</td>
+          </tr>
+          <tr style="color:#0b57d0; font-weight:bold;">
+            <td></td>
+            <td>ECAS TOTAL SCORE:</td>
+            <td></td>
+            <td id="score-ecas-total">0/136</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
 
     <script type="module" src="app.js"></script>
   </body>

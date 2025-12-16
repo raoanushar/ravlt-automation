@@ -445,6 +445,27 @@ th {
   font: inherit;
 }
 
+.fluency-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.fluency-lists .live-words {
+  min-height: 48px;
+}
+
+.notes-box {
+  min-height: 60px;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  margin-top: 0.35rem;
+}
+
 .section-score {
   margin-top: 0.6rem;
   font-weight: 700;
