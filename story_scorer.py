@@ -130,7 +130,7 @@ Return ONLY JSON with:
 - "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Sally (proper name)", "Removed Sedona (place)").
 """
 
-client = OpenAI(api_key="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")
+client = OpenAI(api_key="")
 logging.info("Backend started. OPENAI_API_KEY present: %s", bool(client.api_key))
 
 app = Flask(__name__)
