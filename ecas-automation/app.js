@@ -380,6 +380,12 @@ let dotsIndex = 0;
 let cubesIndex = 0;
 let numberlocIndex = 0;
 let captureContext = null; // { type: "naming" | "comprehension" | "spelling" | "story" | "fluency" | "fluencyT" | "digits" | "alternation" | "dots" | "cubes" | "numberloc" | "sentence" }
+let namingSessionEnded = false;
+let comprehensionSessionEnded = false;
+let digitsSessionEnded = false;
+let dotsSessionEnded = false;
+let cubesSessionEnded = false;
+let numberlocSessionEnded = false;
 const storyState = {
   status: "pending",
   tokens: [],
@@ -425,7 +431,8 @@ const digitStates = digitTrials.map(() => ({
   status: "pending",
   correct: false,
   timestamp: null,
-  candidate: ""
+  candidate: "",
+  autoAdvanceTimer: null
 }));
 const alternationStates = alternationTrials.map(() => ({
   entries: [],
@@ -493,8 +500,10 @@ function init() {
 
 function bindControls() {
   dom.startBtn.addEventListener("click", startListening);
-  dom.stopBtn.addEventListener("click", stopListening);
-  dom.nextBtn.addEventListener("click", () => moveToIndex(activeIndex + 1));
+  if (dom.stopBtn) {
+    dom.stopBtn.addEventListener("click", stopListening);
+  }
+  dom.nextBtn.addEventListener("click", () => moveToIndex(activeIndex + 1, { force: true, keepListening: true }));
   dom.resetBtn.addEventListener("click", resetCurrentItem);
   if (dom.manualBtn) {
     dom.manualBtn.addEventListener("click", addManualEntry);
@@ -511,7 +520,7 @@ function bindControls() {
     dom.compSubmitBtn.addEventListener("click", submitComprehension);
   }
   if (dom.compNextBtn) {
-    dom.compNextBtn.addEventListener("click", () => moveComprehension(compIndex + 1));
+    dom.compNextBtn.addEventListener("click", () => moveComprehension(compIndex + 1, { force: true, keepListening: true }));
   }
   if (dom.compResetBtn) {
     dom.compResetBtn.addEventListener("click", resetComprehension);
@@ -605,7 +614,7 @@ function bindControls() {
     dom.digitsPrevBtn.addEventListener("click", () => moveDigits(digitsIndex - 1));
   }
   if (dom.digitsNextBtn) {
-    dom.digitsNextBtn.addEventListener("click", () => moveDigits(digitsIndex + 1));
+    dom.digitsNextBtn.addEventListener("click", () => moveDigits(digitsIndex + 1, { force: true, keepListening: true }));
   }
   if (dom.digitsResetBtn) {
     dom.digitsResetBtn.addEventListener("click", resetDigits);
@@ -661,7 +670,7 @@ function bindControls() {
     dom.dotsStopBtn.addEventListener("click", stopDotsListening);
   }
   if (dom.dotsNextBtn) {
-    dom.dotsNextBtn.addEventListener("click", () => moveDots(dotsIndex + 1));
+    dom.dotsNextBtn.addEventListener("click", () => moveDots(dotsIndex + 1, { force: true, keepListening: true }));
   }
   if (dom.dotsResetBtn) {
     dom.dotsResetBtn.addEventListener("click", resetDots);
@@ -685,7 +694,7 @@ function bindControls() {
     dom.cubesStopBtn.addEventListener("click", stopCubesListening);
   }
   if (dom.cubesNextBtn) {
-    dom.cubesNextBtn.addEventListener("click", () => moveCubes(cubesIndex + 1));
+    dom.cubesNextBtn.addEventListener("click", () => moveCubes(cubesIndex + 1, { force: true, keepListening: true }));
   }
   if (dom.cubesResetBtn) {
     dom.cubesResetBtn.addEventListener("click", resetCubes);
@@ -697,7 +706,7 @@ function bindControls() {
     dom.numberlocStopBtn.addEventListener("click", stopNumberLocListening);
   }
   if (dom.numberlocNextBtn) {
-    dom.numberlocNextBtn.addEventListener("click", () => moveNumberLoc(numberlocIndex + 1));
+    dom.numberlocNextBtn.addEventListener("click", () => moveNumberLoc(numberlocIndex + 1, { force: true, keepListening: true }));
   }
   if (dom.numberlocResetBtn) {
     dom.numberlocResetBtn.addEventListener("click", resetNumberLoc);
@@ -1018,6 +1027,9 @@ function startDotsListening() {
   if (!speechSupported || !recognition) {
     return;
   }
+  if (dotsSessionEnded) {
+    return;
+  }
   if (captureContext && captureContext.type !== "dots") {
     if (recognition) {
       recognition.stop();
@@ -1067,14 +1079,29 @@ function finalizeDotsCapture() {
   captureContext = null;
   isStopping = false;
   updateDotsUI();
+  if (dotsIndex === dotTrials.length - 1) {
+    endDotsSession();
+  }
 }
 
-function moveDots(index) {
+function moveDots(index, options = {}) {
+  const { force = false, keepListening = false } = options;
+  if (dotsSessionEnded && (!captureContext || captureContext.type === "dots")) {
+    return;
+  }
   const state = dotsStates[dotsIndex];
+  if (!force && state.status === "listening") {
+    return;
+  }
   if (state.status === "pending" && (state.digits.length || state.entries.length)) {
     finalizeDotsCapture();
   }
   loadDots(index);
+  if (keepListening && captureContext && captureContext.type === "dots") {
+    const nextState = dotsStates[dotsIndex];
+    nextState.status = "listening";
+    updateDotsUI();
+  }
 }
 
 function resetDots() {
@@ -1083,6 +1110,7 @@ function resetDots() {
     recognition.stop();
     captureContext = null;
   }
+  dotsSessionEnded = false;
   state.status = "pending";
   state.digits = [];
   state.entries = [];
@@ -1094,6 +1122,9 @@ function resetDots() {
 
 function startCubesListening() {
   if (!speechSupported || !recognition) {
+    return;
+  }
+  if (cubesSessionEnded) {
     return;
   }
   const state = cubesStates[cubesIndex];
@@ -1145,14 +1176,29 @@ function finalizeCubesCapture() {
   captureContext = null;
   isStopping = false;
   updateCubesUI();
+  if (cubesIndex === cubeTrials.length - 1) {
+    endCubesSession();
+  }
 }
 
-function moveCubes(index) {
+function moveCubes(index, options = {}) {
+  const { force = false, keepListening = false } = options;
+  if (cubesSessionEnded && (!captureContext || captureContext.type === "cubes")) {
+    return;
+  }
   const state = cubesStates[cubesIndex];
+  if (!force && state.status === "listening") {
+    return;
+  }
   if (state.status === "pending" && (state.digits.length || state.entries.length)) {
     finalizeCubesCapture();
   }
   loadCubes(index);
+  if (keepListening && captureContext && captureContext.type === "cubes") {
+    const nextState = cubesStates[cubesIndex];
+    nextState.status = "listening";
+    updateCubesUI();
+  }
 }
 
 function resetCubes() {
@@ -1161,6 +1207,7 @@ function resetCubes() {
     recognition.stop();
     captureContext = null;
   }
+  cubesSessionEnded = false;
   state.status = "pending";
   state.digits = [];
   state.entries = [];
@@ -1172,6 +1219,9 @@ function resetCubes() {
 
 function startNumberLocListening() {
   if (!speechSupported || !recognition) {
+    return;
+  }
+  if (numberlocSessionEnded) {
     return;
   }
   const state = numberlocStates[numberlocIndex];
@@ -1230,14 +1280,29 @@ function finalizeNumberLocCapture() {
   captureContext = null;
   isStopping = false;
   updateNumberLocUI();
+  if (numberlocIndex === numberLocTrials.length - 1) {
+    endNumberLocSession();
+  }
 }
 
-function moveNumberLoc(index) {
+function moveNumberLoc(index, options = {}) {
+  const { force = false, keepListening = false } = options;
+  if (numberlocSessionEnded && (!captureContext || captureContext.type === "numberloc")) {
+    return;
+  }
   const state = numberlocStates[numberlocIndex];
+  if (!force && state.status === "listening") {
+    return;
+  }
   if (state.status === "pending" && (state.digits.length || state.entries.length)) {
     finalizeNumberLocCapture();
   }
   loadNumberLoc(index);
+  if (keepListening && captureContext && captureContext.type === "numberloc") {
+    const nextState = numberlocStates[numberlocIndex];
+    nextState.status = "listening";
+    updateNumberLocUI();
+  }
 }
 
 function resetNumberLoc() {
@@ -1246,6 +1311,7 @@ function resetNumberLoc() {
     recognition.stop();
     captureContext = null;
   }
+  numberlocSessionEnded = false;
   state.status = "pending";
   state.digits = [];
   state.entries = [];
@@ -1415,6 +1481,9 @@ function startDigitsListening() {
   if (!speechSupported || !recognition) {
     return;
   }
+  if (digitsSessionEnded) {
+    return;
+  }
   const state = digitStates[digitsIndex];
   if (state.status === "listening") {
     return;
@@ -1430,6 +1499,10 @@ function startDigitsListening() {
   state.entries = [];
   state.candidate = "";
   state.timestamp = null;
+  if (state.autoAdvanceTimer) {
+    clearTimeout(state.autoAdvanceTimer);
+    state.autoAdvanceTimer = null;
+  }
   captureContext = { type: "digits" };
   isStopping = false;
   try {
@@ -1458,6 +1531,10 @@ function finalizeDigitsCapture() {
   if (!state) {
     return;
   }
+  if (state.autoAdvanceTimer) {
+    clearTimeout(state.autoAdvanceTimer);
+    state.autoAdvanceTimer = null;
+  }
   evaluateDigits(state, digitTrials[digitsIndex]);
   state.status = "completed";
   state.timestamp = Date.now();
@@ -1469,6 +1546,8 @@ function finalizeDigitsCapture() {
   updateDigitsUI();
   if (digitsIndex < digitTrials.length - 1) {
     loadDigits(digitsIndex + 1);
+  } else {
+    endDigitsSession();
   }
 }
 
@@ -1483,12 +1562,28 @@ function submitDigits() {
   updateDigitsUI();
 }
 
-function moveDigits(index) {
+function moveDigits(index, options = {}) {
+  const { force = false, keepListening = false } = options;
+  if (digitsSessionEnded && (!captureContext || captureContext.type === "digits")) {
+    return;
+  }
   const state = digitStates[digitsIndex];
+  if (!force && state.status === "listening") {
+    return;
+  }
+  if (state.autoAdvanceTimer) {
+    clearTimeout(state.autoAdvanceTimer);
+    state.autoAdvanceTimer = null;
+  }
   if (state.status === "pending" && (state.digits.length || state.entries.length)) {
     finalizeDigitsCapture();
   }
   loadDigits(index);
+  if (keepListening && captureContext && captureContext.type === "digits") {
+    const nextState = digitStates[digitsIndex];
+    nextState.status = "listening";
+    updateDigitsUI();
+  }
 }
 
 function resetDigits() {
@@ -1497,6 +1592,11 @@ function resetDigits() {
     recognition.stop();
     captureContext = null;
   }
+  if (state.autoAdvanceTimer) {
+    clearTimeout(state.autoAdvanceTimer);
+    state.autoAdvanceTimer = null;
+  }
+  digitsSessionEnded = false;
   state.status = "pending";
   state.digits = [];
   state.entries = [];
@@ -1510,6 +1610,9 @@ function resetDigits() {
 
 function startComprehensionListening() {
   if (!speechSupported || !recognition) {
+    return;
+  }
+  if (comprehensionSessionEnded) {
     return;
   }
   const state = compStates[compIndex];
@@ -1683,12 +1786,24 @@ function submitComprehension() {
   updateComprehensionUI();
 }
 
-function moveComprehension(index) {
+function moveComprehension(index, options = {}) {
+  const { force = false, keepListening = false } = options;
+  if (comprehensionSessionEnded && (!captureContext || captureContext.type === "comprehension")) {
+    return;
+  }
   const current = compStates[compIndex];
+  if (!force && current.status === "listening") {
+    return;
+  }
   if (current.status === "pending" && (current.selectedId || current.entries.length)) {
     submitComprehension();
   }
   loadComprehension(index);
+  if (keepListening && captureContext && captureContext.type === "comprehension") {
+    const nextState = compStates[compIndex];
+    nextState.status = "listening";
+    updateComprehensionUI();
+  }
 }
 
 function resetComprehension() {
@@ -1697,6 +1812,7 @@ function resetComprehension() {
     recognition.stop();
     captureContext = null;
   }
+  comprehensionSessionEnded = false;
   state.selectedId = null;
   state.correct = false;
   state.status = "pending";
@@ -1966,6 +2082,9 @@ function startListening() {
   if (!speechSupported || state.status === "listening") {
     return;
   }
+  if (namingSessionEnded) {
+    return;
+  }
   if (captureContext && captureContext.type !== "naming") {
     if (recognition) {
       recognition.stop();
@@ -2036,7 +2155,14 @@ function handleRecognitionResult(event) {
       state.tokens.push(...tokens);
     }
     evaluateMatch(state, items[activeIndex]);
+    state.status = "completed";
     updateUI();
+    // Advance regardless of correctness; keep mic live between items.
+    if (activeIndex === items.length - 1) {
+      endNamingSession();
+    } else {
+      setTimeout(() => moveToIndex(activeIndex + 1, { force: true, keepListening: true }), 150);
+    }
     return;
   }
 
@@ -2061,7 +2187,13 @@ function handleRecognitionResult(event) {
       state.tokens.push(...tokens);
     }
     evaluateComprehension(state, comprehensionPrompts[compIndex]);
+    state.status = "completed";
     updateComprehensionUI();
+    if (compIndex === comprehensionPrompts.length - 1) {
+      endComprehensionSession();
+    } else {
+      setTimeout(() => moveComprehension(compIndex + 1, { force: true, keepListening: true }), 150);
+    }
     return;
   }
 
@@ -2109,7 +2241,14 @@ function handleRecognitionResult(event) {
       state.digits.push(...digits);
     }
     evaluateDots(state, dotTrials[dotsIndex]);
+    state.status = "completed";
+    state.timestamp = Date.now();
     updateDotsUI();
+    if (dotsIndex === dotTrials.length - 1) {
+      endDotsSession();
+    } else {
+      setTimeout(() => moveDots(dotsIndex + 1, { force: true, keepListening: true }), 150);
+    }
     return;
   }
 
@@ -2133,7 +2272,14 @@ function handleRecognitionResult(event) {
       state.digits.push(...digits);
     }
     evaluateCubes(state, cubeTrials[cubesIndex]);
+    state.status = "completed";
+    state.timestamp = Date.now();
     updateCubesUI();
+    if (cubesIndex === cubeTrials.length - 1) {
+      endCubesSession();
+    } else {
+      setTimeout(() => moveCubes(cubesIndex + 1, { force: true, keepListening: true }), 150);
+    }
     return;
   }
 
@@ -2194,31 +2340,14 @@ function handleRecognitionResult(event) {
       }
     }
     evaluateNumberLoc(state, numberLocTrials[numberlocIndex]);
+    state.status = "completed";
+    state.timestamp = Date.now();
     updateNumberLocUI();
-    return;
-  }
-
-  if (captureContext.type === "numberloc") {
-    const state = numberlocStates[numberlocIndex];
-    if (!state || (state.status !== "listening" && state.status !== "finishing")) {
-      return;
+    if (numberlocIndex === numberLocTrials.length - 1) {
+      endNumberLocSession();
+    } else {
+      setTimeout(() => moveNumberLoc(numberlocIndex + 1, { force: true, keepListening: true }), 150);
     }
-    for (let i = event.resultIndex; i < event.results.length; i += 1) {
-      const result = event.results[i];
-      if (!result.isFinal) {
-        continue;
-      }
-      const transcript = result[0].transcript || "";
-      const digits = extractDigits(transcript);
-      state.entries.push({
-        text: transcript.trim(),
-        timestamp: Date.now(),
-        digits
-      });
-      state.digits.push(...digits);
-    }
-    evaluateNumberLoc(state, numberLocTrials[numberlocIndex]);
-    updateNumberLocUI();
     return;
   }
 
@@ -2247,6 +2376,18 @@ function handleRecognitionResult(event) {
     }
     evaluateDigits(state, digitTrials[digitsIndex]);
     updateDigitsUI();
+    if (!state.autoAdvanceTimer) {
+      state.autoAdvanceTimer = setTimeout(() => {
+        state.autoAdvanceTimer = null;
+        if (state.status === "listening") {
+          state.status = "finishing";
+          isStopping = true;
+          if (recognition) {
+            recognition.stop();
+          }
+        }
+      }, 600);
+    }
     return;
   }
 
@@ -2677,6 +2818,7 @@ function resetCurrentItem() {
   state.matched = false;
   state.status = "pending";
   isStopping = false;
+  namingSessionEnded = false;
   updateUI();
 }
 
@@ -2702,15 +2844,24 @@ function addManualEntry() {
   updateUI();
 }
 
-function moveToIndex(index) {
+function moveToIndex(index, options = {}) {
+  const { force = false, keepListening = false } = options;
+  if (namingSessionEnded && (!captureContext || captureContext.type === "naming")) {
+    return;
+  }
   const currentState = itemStates[activeIndex];
-  if (currentState.status === "listening") {
+  if (!force && currentState.status === "listening") {
     return;
   }
   if (currentState.status === "pending" && currentState.entries.length) {
     currentState.status = "completed";
   }
   loadItem(index);
+  if (keepListening && captureContext && captureContext.type === "naming") {
+    const nextState = itemStates[activeIndex];
+    nextState.status = "listening";
+    updateUI();
+  }
 }
 
 function updateUI() {
@@ -2729,6 +2880,12 @@ function updateUI() {
   updateDotsUI();
   updateCubesUI();
   updateNumberLocUI();
+  checkNamingCompletion();
+  checkComprehensionCompletion();
+  checkDigitsCompletion();
+  checkDotsCompletion();
+  checkCubesCompletion();
+  checkNumberLocCompletion();
 }
 
 function updateStatusBadge() {
@@ -2786,11 +2943,11 @@ function updateComprehensionUI() {
         : "status-badge"
       : "status-badge";
 
-  dom.compSubmitBtn.disabled = state.status === "completed" && state.correct;
-  dom.compNextBtn.disabled = false;
-  dom.compResetBtn.disabled = false;
+  dom.compSubmitBtn.disabled = (state.status === "completed" && state.correct) || comprehensionSessionEnded;
+  dom.compNextBtn.disabled = comprehensionSessionEnded;
+  dom.compResetBtn.disabled = comprehensionSessionEnded;
   if (dom.compStartBtn) {
-    dom.compStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.compStartBtn.disabled = !speechSupported || state.status === "listening" || comprehensionSessionEnded;
   }
   if (dom.compStopBtn) {
     dom.compStopBtn.disabled = state.status !== "listening";
@@ -3083,6 +3240,23 @@ function renderComprehensionLog() {
     const spoken = latestEntry ? latestEntry.text : "";
     const combined = [selectionLabel, spoken].filter(Boolean).join(" / ");
     responseTd.textContent = combined || "";
+    responseTd.classList.add("editable-cell");
+    attachInlineEdit(responseTd, combined, newText => {
+      const trimmed = newText.trim();
+      state.selectedId = null; // manual override
+      if (trimmed) {
+        const newEntry = {
+          text: trimmed,
+          source: "Edited",
+          timestamp: Date.now(),
+          tokens: tokenize(trimmed)
+        };
+        state.entries.push(newEntry);
+        state.tokens.push(...newEntry.tokens);
+      }
+      evaluateComprehension(state, q);
+      updateComprehensionUI();
+    });
 
     const scoreTd = document.createElement("td");
     let pillClass = "pending";
@@ -3197,6 +3371,14 @@ function renderSpellingLog() {
     const targetTd = document.createElement("td");
     targetTd.textContent =
       state.spelledCandidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "");
+    targetTd.classList.add("editable-cell");
+    attachInlineEdit(targetTd, targetTd.textContent, newText => {
+      const trimmed = newText.trim();
+      state.typedAnswer = trimmed;
+      state.spelledCandidate = trimmed;
+      evaluateSpelling(state, spellingWords[idx]);
+      updateSpellingUI();
+    });
     const resultTd = document.createElement("td");
     const pill = document.createElement("span");
     const statusClass = state.status === "completed" ? (state.correct ? "success" : "miss") : "pending";
@@ -3306,16 +3488,16 @@ function updateDigitsUI() {
       : "status-badge";
 
   if (dom.digitsStartBtn) {
-    dom.digitsStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.digitsStartBtn.disabled = !speechSupported || state.status === "listening" || digitsSessionEnded;
   }
   if (dom.digitsStopBtn) {
     dom.digitsStopBtn.disabled = state.status !== "listening";
   }
   if (dom.digitsPrevBtn) {
-    dom.digitsPrevBtn.disabled = state.status === "listening";
+    dom.digitsPrevBtn.disabled = state.status === "listening" || digitsSessionEnded;
   }
   if (dom.digitsNextBtn) {
-    dom.digitsNextBtn.disabled = state.status === "listening";
+    dom.digitsNextBtn.disabled = state.status === "listening" || digitsSessionEnded;
   }
   if (dom.digitsResetBtn) {
     dom.digitsResetBtn.disabled = state.status === "listening";
@@ -3331,14 +3513,15 @@ function renderDigitsLive() {
     return;
   }
   const state = digitStates[digitsIndex];
-  if (!state.digits.length) {
-    dom.digitsLiveWords.innerHTML = '<span class="muted">No digits captured yet.</span>';
+  const recentEntries = state.entries.slice(-4);
+  if (!recentEntries.length) {
+    dom.digitsLiveWords.innerHTML = '<span class="muted">No responses yet.</span>';
     return;
   }
   const frag = document.createDocumentFragment();
-  state.digits.slice(-14).forEach(d => {
+  recentEntries.forEach(entry => {
     const chip = document.createElement("span");
-    chip.textContent = d;
+    chip.textContent = entry.text || "(blank)";
     frag.appendChild(chip);
   });
   dom.digitsLiveWords.innerHTML = "";
@@ -3376,7 +3559,24 @@ function renderDigitsLog() {
     const targetTd = document.createElement("td");
     targetTd.textContent = digitTrials[idx];
     const respTd = document.createElement("td");
-    respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
+    const lastEntry = state.entries.slice(-1)[0];
+    respTd.textContent = state.candidate || (lastEntry?.text || "");
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      state.typedAnswer = trimmed;
+      state.candidate = trimmed;
+      if (trimmed) {
+        state.entries.push({
+          text: trimmed,
+          timestamp: Date.now(),
+          digits: extractDigits(trimmed)
+        });
+      }
+      evaluateDigits(state, digitTrials[idx]);
+      state.status = "completed";
+      updateDigitsUI();
+    });
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
       const pill = document.createElement("span");
@@ -3546,6 +3746,23 @@ function renderAlternationLog() {
     targetTd.textContent = `${alternationTrials[idx].number}-${alternationTrials[idx].letter}`;
     const respTd = document.createElement("td");
     respTd.textContent = state.candidate || state.typedAnswer || (state.entries.slice(-1)[0]?.text || "");
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      state.typedAnswer = trimmed;
+      state.candidate = trimmed;
+      if (trimmed) {
+        state.entries.push({
+          text: trimmed,
+          timestamp: Date.now(),
+          numbers: extractDigits(trimmed),
+          letters: extractLetters(trimmed)
+        });
+      }
+      evaluateAlternation(state, alternationTrials[idx]);
+      state.status = "completed";
+      updateAlternationUI();
+    });
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
       const pill = document.createElement("span");
@@ -3648,13 +3865,13 @@ function updateCubesUI() {
       : "status-badge";
 
   if (dom.cubesStartBtn) {
-    dom.cubesStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.cubesStartBtn.disabled = !speechSupported || state.status === "listening" || cubesSessionEnded;
   }
   if (dom.cubesStopBtn) {
     dom.cubesStopBtn.disabled = state.status !== "listening";
   }
   if (dom.cubesNextBtn) {
-    dom.cubesNextBtn.disabled = state.status === "listening";
+    dom.cubesNextBtn.disabled = state.status === "listening" || cubesSessionEnded;
   }
   if (dom.cubesResetBtn) {
     dom.cubesResetBtn.disabled = state.status === "listening";
@@ -3715,6 +3932,54 @@ function renderCubesLog() {
     targetTd.textContent = cubeTrials[idx].answer;
     const respTd = document.createElement("td");
     respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      state.candidate = trimmed;
+      if (trimmed) {
+        state.entries.push({
+          text: trimmed,
+          timestamp: Date.now(),
+          digits: extractDigits(trimmed)
+        });
+        state.digits = extractDigits(trimmed);
+      }
+      evaluateNumberLoc(state, numberLocTrials[idx]);
+      state.status = "completed";
+      updateNumberLocUI();
+    });
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      state.candidate = trimmed;
+      if (trimmed) {
+        state.entries.push({
+          text: trimmed,
+          timestamp: Date.now(),
+          digits: extractDigits(trimmed)
+        });
+        state.digits = extractDigits(trimmed);
+      }
+      evaluateCubes(state, cubeTrials[idx]);
+      state.status = "completed";
+      updateCubesUI();
+    });
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      state.candidate = trimmed;
+      if (trimmed) {
+        state.entries.push({
+          text: trimmed,
+          timestamp: Date.now(),
+          digits: extractDigits(trimmed)
+        });
+        state.digits = extractDigits(trimmed);
+      }
+      evaluateDots(state, dotTrials[idx]);
+      state.status = "completed";
+      updateDotsUI();
+    });
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
       const pill = document.createElement("span");
@@ -3772,13 +4037,13 @@ function updateNumberLocUI() {
       : "status-badge";
 
   if (dom.numberlocStartBtn) {
-    dom.numberlocStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.numberlocStartBtn.disabled = !speechSupported || state.status === "listening" || numberlocSessionEnded;
   }
   if (dom.numberlocStopBtn) {
     dom.numberlocStopBtn.disabled = state.status !== "listening";
   }
   if (dom.numberlocNextBtn) {
-    dom.numberlocNextBtn.disabled = state.status === "listening";
+    dom.numberlocNextBtn.disabled = state.status === "listening" || numberlocSessionEnded;
   }
   if (dom.numberlocResetBtn) {
     dom.numberlocResetBtn.disabled = state.status === "listening";
@@ -3995,7 +4260,7 @@ function getScoreValue(el, max) {
   if (!el) {
     return 0;
   }
-  const match = `${el.textContent}`.match(/(\\d+)/);
+  const match = `${el.textContent}`.match(/(\d+)/);
   const val = match ? parseInt(match[1], 10) : 0;
   return Number.isFinite(val) ? Math.max(0, Math.min(val, max)) : 0;
 }
@@ -4087,13 +4352,13 @@ function updateDotsUI() {
       : "status-badge";
 
   if (dom.dotsStartBtn) {
-    dom.dotsStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.dotsStartBtn.disabled = !speechSupported || state.status === "listening" || dotsSessionEnded;
   }
   if (dom.dotsStopBtn) {
     dom.dotsStopBtn.disabled = state.status !== "listening";
   }
   if (dom.dotsNextBtn) {
-    dom.dotsNextBtn.disabled = state.status === "listening";
+    dom.dotsNextBtn.disabled = state.status === "listening" || dotsSessionEnded;
   }
   if (dom.dotsResetBtn) {
     dom.dotsResetBtn.disabled = state.status === "listening";
@@ -4324,6 +4589,24 @@ function renderLog() {
       .slice()
       .sort((a, b) => b.timestamp - a.timestamp)[0];
     participantTd.textContent = latestEntry ? latestEntry.text || "(blank)" : "";
+    participantTd.classList.add("editable-cell");
+    attachInlineEdit(participantTd, participantTd.textContent, newText => {
+      const trimmed = newText.trim();
+      if (latestEntry) {
+        latestEntry.text = trimmed;
+        latestEntry.tokens = tokenize(trimmed);
+      } else if (trimmed) {
+        state.entries.push({
+          text: trimmed,
+          source: "Edited",
+          timestamp: Date.now(),
+          tokens: tokenize(trimmed)
+        });
+      }
+      retokenizeItemState(state);
+      evaluateMatch(state, item);
+      updateUI();
+    });
 
     const scoreTd = document.createElement("td");
     const matched = state.entries.length ? evaluateMatch(state, item) : false;
@@ -4359,16 +4642,34 @@ function renderLog() {
 
 function updateButtons() {
   const state = itemStates[activeIndex];
-  dom.startBtn.disabled = !speechSupported || state.status === "listening";
-  dom.stopBtn.disabled = state.status !== "listening";
-  dom.nextBtn.disabled = state.status === "listening";
-  dom.resetBtn.disabled = state.status === "listening";
+  if (dom.startBtn) {
+    dom.startBtn.disabled = !speechSupported || state.status === "listening" || namingSessionEnded;
+  }
+  if (dom.stopBtn) {
+    dom.stopBtn.disabled = state.status !== "listening";
+  }
+  if (dom.nextBtn) {
+    dom.nextBtn.disabled = namingSessionEnded;
+  }
+  if (dom.resetBtn) {
+    dom.resetBtn.disabled = state.status === "listening";
+  }
 }
 
 function evaluateMatch(state, item) {
   const targetSet = buildTargetSet(item.answers);
   state.matched = state.tokens.some(token => targetSet.has(token));
   return state.matched;
+}
+
+function retokenizeItemState(state) {
+  const tokens = [];
+  state.entries.forEach(entry => {
+    const entryTokens = entry.tokens && entry.tokens.length ? entry.tokens : tokenize(entry.text || "");
+    entry.tokens = entryTokens;
+    tokens.push(...entryTokens);
+  });
+  state.tokens = tokens;
 }
 
 function evaluateComprehension(state, question) {
@@ -4450,4 +4751,174 @@ function buildTargetSet(words = []) {
 function formatTime(timestamp) {
   const date = new Date(timestamp);
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function attachInlineEdit(cell, initialValue, onSave) {
+  cell.addEventListener("dblclick", () => {
+    if (cell.querySelector("input")) {
+      return;
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = initialValue || "";
+    input.className = "inline-edit";
+    cell.innerHTML = "";
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    const commit = save => {
+      const nextText = save ? input.value : initialValue || "";
+      onSave(nextText);
+    };
+
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        commit(false);
+      }
+    });
+    input.addEventListener("blur", () => commit(true));
+  });
+}
+
+function endNamingSession() {
+  if (namingSessionEnded) {
+    return;
+  }
+  namingSessionEnded = true;
+  if (captureContext && captureContext.type === "naming" && recognition) {
+    recognition.stop();
+    captureContext = null;
+  }
+  isStopping = false;
+  updateButtons();
+}
+
+function checkNamingCompletion() {
+  if (namingSessionEnded) {
+    return;
+  }
+  const allCaptured = itemStates.every(s => s.entries.length > 0);
+  if (allCaptured) {
+    endNamingSession();
+  }
+}
+
+function endComprehensionSession() {
+  if (comprehensionSessionEnded) {
+    return;
+  }
+  comprehensionSessionEnded = true;
+  if (captureContext && captureContext.type === "comprehension" && recognition) {
+    recognition.stop();
+    captureContext = null;
+  }
+  isStopping = false;
+  updateComprehensionUI();
+}
+
+function checkComprehensionCompletion() {
+  if (comprehensionSessionEnded) {
+    return;
+  }
+  const allCaptured = compStates.every(s => s.selectedId || (s.entries && s.entries.length));
+  if (allCaptured) {
+    endComprehensionSession();
+  }
+}
+
+function endDigitsSession() {
+  if (digitsSessionEnded) {
+    return;
+  }
+  digitsSessionEnded = true;
+  if (captureContext && captureContext.type === "digits" && recognition) {
+    recognition.stop();
+    captureContext = null;
+  }
+  isStopping = false;
+  updateDigitsUI();
+}
+
+function checkDigitsCompletion() {
+  if (digitsSessionEnded) {
+    return;
+  }
+  const allCaptured = digitStates.every(s => s.digits.length || s.entries.length || s.typedAnswer);
+  if (allCaptured) {
+    endDigitsSession();
+  }
+}
+
+function endDotsSession() {
+  if (dotsSessionEnded) {
+    return;
+  }
+  dotsSessionEnded = true;
+  if (captureContext && captureContext.type === "dots" && recognition) {
+    recognition.stop();
+    captureContext = null;
+  }
+  isStopping = false;
+  updateDotsUI();
+}
+
+function checkDotsCompletion() {
+  if (dotsSessionEnded) {
+    return;
+  }
+  const allCaptured = dotsStates.every(s => s.digits.length || s.entries.length);
+  if (allCaptured) {
+    endDotsSession();
+  }
+}
+
+function endCubesSession() {
+  if (cubesSessionEnded) {
+    return;
+  }
+  cubesSessionEnded = true;
+  if (captureContext && captureContext.type === "cubes" && recognition) {
+    recognition.stop();
+    captureContext = null;
+  }
+  isStopping = false;
+  updateCubesUI();
+}
+
+function checkCubesCompletion() {
+  if (cubesSessionEnded) {
+    return;
+  }
+  const allCaptured = cubesStates.every(s => s.digits.length || s.entries.length);
+  if (allCaptured) {
+    endCubesSession();
+  }
+}
+
+function endNumberLocSession() {
+  if (numberlocSessionEnded) {
+    return;
+  }
+  numberlocSessionEnded = true;
+  if (captureContext && captureContext.type === "numberloc" && recognition) {
+    recognition.stop();
+    captureContext = null;
+  }
+  isStopping = false;
+  updateNumberLocUI();
+}
+
+function checkNumberLocCompletion() {
+  if (numberlocSessionEnded) {
+    return;
+  }
+  const allCaptured = numberlocStates.every(s => s.digits.length || s.entries.length);
+  if (allCaptured) {
+    endNumberLocSession();
+  }
 }
