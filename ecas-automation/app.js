@@ -53,6 +53,10 @@ const itemLookup = items.reduce((acc, item) => {
   acc[item.id] = item;
   return acc;
 }, {});
+const itemIndexById = items.reduce((acc, item, idx) => {
+  acc[item.id] = idx;
+  return acc;
+}, {});
 
 const comprehensionPrompts = [
   { prompt: "Something you can fly in", answerId: "helicopter" },
@@ -4672,12 +4676,35 @@ function retokenizeItemState(state) {
   state.tokens = tokens;
 }
 
+function getNamingAliasTokens(itemId) {
+  const idx = itemIndexById[itemId];
+  if (typeof idx !== "number") {
+    return new Set();
+  }
+  const namingState = itemStates[idx];
+  const aliases = new Set();
+  if (!namingState || !Array.isArray(namingState.entries)) {
+    return aliases;
+  }
+  namingState.entries.forEach(entry => {
+    const entryTokens = entry.tokens && entry.tokens.length ? entry.tokens : tokenize(entry.text || "");
+    entryTokens.forEach(tok => {
+      if (tok) {
+        aliases.add(tok);
+      }
+    });
+  });
+  return aliases;
+}
+
 function evaluateComprehension(state, question) {
   const expected = itemLookup[question.answerId];
   const targetSet = buildTargetSet(expected ? expected.answers : []);
   const selectionMatch = state.selectedId === question.answerId;
   const voiceMatch = (state.tokens || []).some(token => targetSet.has(token));
-  state.correct = Boolean(selectionMatch || voiceMatch);
+  const aliasSet = getNamingAliasTokens(question.answerId);
+  const aliasMatch = (state.tokens || []).some(token => aliasSet.has(token));
+  state.correct = Boolean(selectionMatch || voiceMatch || aliasMatch);
   return state.correct;
 }
 
