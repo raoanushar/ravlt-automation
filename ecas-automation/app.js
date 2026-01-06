@@ -513,6 +513,13 @@ function init() {
 
 function bindControls() {
   dom.startBtn.addEventListener("click", startListening);
+  const aiDemoToggle = document.getElementById("ai-demo-toggle");
+  if (aiDemoToggle) {
+    aiDemoToggle.addEventListener("change", event => {
+      setAIDemoMode(event.target.checked);
+    });
+    setAIDemoMode(aiDemoToggle.checked);
+  }
   if (dom.stopBtn) {
     dom.stopBtn.addEventListener("click", stopListening);
   }
@@ -744,6 +751,15 @@ function bindControls() {
   if (dom.numberlocResetBtn) {
     dom.numberlocResetBtn.addEventListener("click", resetNumberLoc);
   }
+}
+
+function setAIDemoMode(enabled) {
+  const allowed = new Set(["story-card", "fluency-card", "fluency-t-card", "sentence-card"]);
+  document.querySelectorAll("section.stage-card").forEach(section => {
+    const id = section.getAttribute("id");
+    const shouldShow = !enabled || (id && allowed.has(id));
+    section.classList.toggle("ai-demo-hidden", !shouldShow);
+  });
 }
 
 function setupSpeechRecognition() {

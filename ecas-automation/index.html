@@ -15,12 +15,19 @@
   <body>
     <div class="app">
       <header>
-        <div>
-          <p class="eyebrow">Clinical workflow helper</p>
-          <h1>Edinburgh Cognitive and Behavioural ALS Screen (ECAS) - AI-Powered Proctor</h1>
-        </div>
-        <div class="meta">
-          <span class="badge">Mic + Chrome required</span>
+        <div class="title-row">
+          <div class="title-block">
+            <p class="eyebrow">Clinical workflow helper</p>
+            <div class="title-line">
+              <h1>Edinburgh Cognitive and Behavioural ALS Screen (ECAS) - AI-Powered Proctor</h1>
+              <label class="toggle">
+                <span>AI Demo</span>
+                <input type="checkbox" id="ai-demo-toggle" />
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+            </div>
+            <span class="badge">Mic + Chrome required</span>
+          </div>
         </div>
       </header>
 
@@ -712,7 +719,7 @@
           <div>
             <p class="eyebrow">8. Verbal Fluency - Letter T</p>
             <h2>Letter T (4-letter words, 60 seconds)</h2>
-            <p class="overview">Start the timer, capture unique 4-letter words beginning with "T". Exclude names, places, numbers, and non-words.</p>
+            <p class="overview">Start the timer, then capture all unique 4-letter words beginning with "T". Exclude names, places, and numbers.</p>
           </div>
           <span class="status-badge" id="fluency-t-status">Idle</span>
         </div>
@@ -725,8 +732,8 @@
         <div class="prompt-box">
           <p class="eyebrow">Prompt to read</p>
           <p class="prompt">
-            "I am going to give you a letter of the alphabet and I would like you to say as many different words as you can beginning with that letter,
-            but not names of people, places, or numbers. You will have one minute. The letter is T. Only 4-letter words count."
+            "I am going to give you a letter of the alphabet and I would like you to say as many different words as you can beginning with that letter, but not names of people, places, or numbers."
+            "You will have one minute. The letter is T. Only 4-letter words count."
           </p>
         </div>
 
@@ -750,20 +757,12 @@
           <p class="muted">Double-click a word in the transcription or list to edit it. Clear to remove.</p>
         </div>
 
-        <div class="result-grid">
-          <div class="result-card">
-            <p class="eyebrow">Score</p>
-            <p class="result-title" id="fluency-t-score">0 valid words</p>
-            <p class="muted">Counts only unique 4-letter words starting with T.</p>
-          </div>
-        </div>
-
         <div class="log">
           <div class="log-header">
             <p class="eyebrow">Words captured</p>
             <button class="ghost" id="fluency-t-score-llm-btn">Score with AI Assistant</button>
           </div>
-          <table>
+          <table class="fluency-table">
             <thead>
               <tr>
                 <th>#</th>
