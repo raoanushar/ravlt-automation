@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: ecas-automation
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn story_scorer:app
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false

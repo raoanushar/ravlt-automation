@@ -8,7 +8,7 @@ The frontend should point window.STORY_SCORER_URL to http://127.0.0.1:5000/score
 
 import logging
 import os
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, send_from_directory
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -134,7 +134,23 @@ api_key = os.getenv("OPENAI_API_KEY", "")
 client = OpenAI(api_key=api_key)
 logging.info("Backend started. OPENAI_API_KEY present: %s", bool(api_key))
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "ecas-automation")
+
 app = Flask(__name__)
+
+
+@app.route("/")
+def index():
+    return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/<path:filename>")
+def static_files(filename):
+    file_path = os.path.join(STATIC_DIR, filename)
+    if not os.path.isfile(file_path):
+        return make_response("Not Found", 404)
+    return send_from_directory(STATIC_DIR, filename)
 
 
 @app.after_request
@@ -299,4 +315,5 @@ def score_sentences():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=False)

@@ -508,6 +508,7 @@ function init() {
   setupDots();
   setupCubes();
   setupNumberLoc();
+  setupSentenceScoreEditing();
   updateUI();
 }
 
@@ -751,6 +752,42 @@ function bindControls() {
   if (dom.numberlocResetBtn) {
     dom.numberlocResetBtn.addEventListener("click", resetNumberLoc);
   }
+}
+
+function setupSentenceScoreEditing() {
+  (dom.sentenceScoreCells || []).forEach(cell => {
+    cell.addEventListener("dblclick", () => {
+      if (cell.querySelector("input")) {
+        return;
+      }
+      const prevText = cell.textContent.trim();
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "inline-edit";
+      input.value = prevText;
+      cell.textContent = "";
+      cell.appendChild(input);
+      input.focus();
+      input.select();
+
+      const commit = shouldSave => {
+        const nextText = shouldSave ? (input.value || "").trim() : prevText;
+        updateSentenceScoreCell(cell, nextText);
+        updateSentenceScoreTotalFromCells();
+      };
+
+      input.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          commit(false);
+        }
+      });
+      input.addEventListener("blur", () => commit(true));
+    });
+  });
 }
 
 function setAIDemoMode(enabled) {
@@ -4757,8 +4794,9 @@ function applySentenceScores(result = {}) {
     const noteCell = dom.sentenceNoteCells[idx];
     if (scoreCell) {
       const scoreVal = typeof item.score === "number" ? item.score : "";
-      scoreCell.textContent = scoreVal === "" ? "" : `${scoreVal}`;
-      if (typeof item.score === "number") {
+      const scoreText = scoreVal === "" ? "" : `${scoreVal}`;
+      updateSentenceScoreCell(scoreCell, scoreText);
+      if (typeof item.score === "number" && scoreVal >= 0 && scoreVal <= 2) {
         total += item.score;
       }
     }
@@ -4769,6 +4807,35 @@ function applySentenceScores(result = {}) {
   if (dom.sentenceSectionScore) {
     dom.sentenceSectionScore.textContent = `${total}`;
   }
+}
+
+function isValidSentenceScore(value) {
+  return /^(0|1|2)$/.test(value);
+}
+
+function updateSentenceScoreCell(cell, valueText) {
+  const trimmed = (valueText || "").trim();
+  cell.textContent = trimmed;
+  if (trimmed && !isValidSentenceScore(trimmed)) {
+    cell.classList.add("score-invalid");
+  } else {
+    cell.classList.remove("score-invalid");
+  }
+}
+
+function updateSentenceScoreTotalFromCells() {
+  const cells = dom.sentenceScoreCells || [];
+  let total = 0;
+  cells.forEach(cell => {
+    const val = (cell.textContent || "").trim();
+    if (isValidSentenceScore(val)) {
+      total += Number(val);
+    }
+  });
+  if (dom.sentenceSectionScore) {
+    dom.sentenceSectionScore.textContent = `${total}`;
+  }
+  updateScorecard();
 }
 
 function syncSentenceResponsesFromInputs() {

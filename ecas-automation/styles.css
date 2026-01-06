@@ -731,3 +731,12 @@ th {
   font: inherit;
   padding: 4px 6px;
 }
+
+.sentence-score {
+  cursor: pointer;
+}
+
+.score-invalid {
+  color: #b91c1c;
+  font-weight: 700;
+}
