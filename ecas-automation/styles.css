@@ -397,6 +397,12 @@ td {
   text-align: left;
   padding: 0.45rem 0.25rem;
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+table.fluency-table th,
+table.fluency-table td {
+  white-space: nowrap;
 }
 
 th {
@@ -491,6 +497,159 @@ th {
 }
 .editable-cell {
   cursor: text;
+}
+
+.editable-word {
+  cursor: pointer;
+}
+
+.draggable-word {
+  cursor: grab;
+}
+
+.draggable-word.dragging {
+  opacity: 0.6;
+}
+
+.draggable-word.drag-over {
+  outline: 2px dashed var(--border);
+  outline-offset: 2px;
+}
+
+.remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-weight: 700;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.icon-btn.accept {
+  color: #15803d;
+}
+
+.icon-btn.reject {
+  color: #b91c1c;
+}
+
+.icon-btn.selected {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: #0f172a;
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-pill.keep {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ai-pill.remove {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.ai-pop {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.raw-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ai-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.ai-popover {
+  position: absolute;
+  top: 130%;
+  left: 0;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  display: none;
+  z-index: 5;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.25);
+}
+
+.ai-popover.show {
+  display: block;
+}
+
+.inline-editor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+  font: inherit;
+  min-width: 90px;
 }
 
 .inline-edit {

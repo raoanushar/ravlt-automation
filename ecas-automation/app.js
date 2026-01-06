@@ -253,6 +253,10 @@ const dom = {
   altCandidate: document.getElementById("alt-candidate"),
   altLogBody: document.getElementById("alt-log-body"),
   altSectionScore: document.getElementById("alt-section-score"),
+  fluencyManualInput: document.getElementById("fluency-manual-input"),
+  fluencyManualAdd: document.getElementById("fluency-manual-add"),
+  fluencyTManualInput: document.getElementById("fluency-t-manual-input"),
+  fluencyTManualAdd: document.getElementById("fluency-t-manual-add"),
   fluencyTStatus: document.getElementById("fluency-t-status"),
   fluencyTCountdown: document.getElementById("fluency-t-countdown"),
   fluencyTStartBtn: document.getElementById("fluency-t-start-btn"),
@@ -383,6 +387,7 @@ let altIndex = 0;
 let dotsIndex = 0;
 let cubesIndex = 0;
 let numberlocIndex = 0;
+let fluencyDragState = null; // { scope: "fluency" | "fluencyT", listType: "raw" | "scored", index: number }
 let captureContext = null; // { type: "naming" | "comprehension" | "spelling" | "story" | "fluency" | "fluencyT" | "digits" | "alternation" | "dots" | "cubes" | "numberloc" | "sentence" }
 let namingSessionEnded = false;
 let comprehensionSessionEnded = false;
@@ -426,7 +431,9 @@ const fluencyState = {
   timer: { remainingMs: 60000, endTime: null, rafId: null, startTime: null },
   uniqueWords: new Set(),
   processedWords: [],
-  processedNotes: []
+  processedNotes: [],
+  aiReview: [],
+  aiKeepMask: []
 };
 const digitStates = digitTrials.map(() => ({
   entries: [],
@@ -457,7 +464,9 @@ const fluencyTState = {
   timer: { remainingMs: 60000, endTime: null, rafId: null, startTime: null },
   uniqueWords: new Set(),
   processedWords: [],
-  processedNotes: []
+  processedNotes: [],
+  aiReview: [],
+  aiKeepMask: []
 };
 const dotsStates = dotTrials.map(() => ({
   entries: [],
@@ -516,6 +525,26 @@ function bindControls() {
     dom.manualInput.addEventListener("keydown", event => {
       if (event.key === "Enter") {
         addManualEntry();
+      }
+    });
+  }
+  if (dom.fluencyManualAdd) {
+    dom.fluencyManualAdd.addEventListener("click", addFluencyManualEntry);
+  }
+  if (dom.fluencyManualInput) {
+    dom.fluencyManualInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        addFluencyManualEntry();
+      }
+    });
+  }
+  if (dom.fluencyTManualAdd) {
+    dom.fluencyTManualAdd.addEventListener("click", addFluencyTManualEntry);
+  }
+  if (dom.fluencyTManualInput) {
+    dom.fluencyTManualInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        addFluencyTManualEntry();
       }
     });
   }
@@ -921,9 +950,7 @@ function startFluencyListening() {
   fluencyState.tokens = [];
   fluencyState.entries = [];
   fluencyState.uniqueWords = new Set();
-  fluencyState.processedWords = [];
-  fluencyState.processedNotes = [];
-  fluencyState.processedWords = [];
+  resetFluencyAIReview(fluencyState);
   fluencyState.timer.remainingMs = 60000;
   fluencyState.timer.startTime = null;
   fluencyState.timer.endTime = Date.now() + 60000;
@@ -956,8 +983,7 @@ function startFluencyTListening() {
   fluencyTState.tokens = [];
   fluencyTState.entries = [];
   fluencyTState.uniqueWords = new Set();
-  fluencyTState.processedWords = [];
-  fluencyTState.processedNotes = [];
+  resetFluencyAIReview(fluencyTState);
   fluencyTState.timer.remainingMs = 60000;
   fluencyTState.timer.startTime = null;
   fluencyTState.timer.endTime = Date.now() + 60000;
@@ -1003,6 +1029,9 @@ function finalizeFluencyTCapture() {
   if (!fluencyTState.processedNotes) {
     fluencyTState.processedNotes = [];
   }
+  if (!fluencyTState.aiReview) {
+    fluencyTState.aiReview = [];
+  }
   updateFluencyTUI();
 }
 
@@ -1022,8 +1051,7 @@ function resetFluencyT() {
   fluencyTState.timer.remainingMs = 60000;
   fluencyTState.timer.endTime = null;
   fluencyTState.timer.startTime = null;
-  fluencyTState.processedWords = [];
-  fluencyTState.processedNotes = [];
+  resetFluencyAIReview(fluencyTState);
   updateFluencyTUI();
 }
 
@@ -1365,8 +1393,7 @@ function resetFluency() {
   fluencyState.tokens = [];
   fluencyState.entries = [];
   fluencyState.uniqueWords = new Set();
-  fluencyState.processedWords = [];
-  fluencyState.processedNotes = [];
+  resetFluencyAIReview(fluencyState);
   fluencyState.timer.remainingMs = 60000;
   fluencyState.timer.endTime = null;
   fluencyState.timer.startTime = null;
@@ -1965,8 +1992,7 @@ async function scoreFluencyWithLLM() {
     }
     const data = await response.json();
     console.log("Fluency scorer response", data);
-    fluencyState.processedWords = Array.isArray(data.processed_words) ? data.processed_words : [];
-    fluencyState.processedNotes = Array.isArray(data.rationale) ? data.rationale : [];
+    buildFluencyAIReview(fluencyState, data);
     updateFluencyUI();
   } catch (err) {
     console.error("Fluency LLM scoring failed", err);
@@ -2008,8 +2034,7 @@ async function scoreFluencyTWithLLM() {
     }
     const data = await response.json();
     console.log("Fluency T scorer response", data);
-    fluencyTState.processedWords = Array.isArray(data.processed_words) ? data.processed_words : [];
-    fluencyTState.processedNotes = Array.isArray(data.rationale) ? data.rationale : [];
+    buildFluencyAIReview(fluencyTState, data);
     updateFluencyTUI();
   } catch (err) {
     console.error("Fluency T AI scoring failed", err);
@@ -2557,6 +2582,7 @@ function handleRecognitionError(event) {
       fluencyState.tokens = [];
       fluencyState.entries = [];
       fluencyState.uniqueWords = new Set();
+      resetFluencyAIReview(fluencyState);
       captureContext = null;
       if (fluencyState.timer.rafId) {
         cancelAnimationFrame(fluencyState.timer.rafId);
@@ -2572,6 +2598,7 @@ function handleRecognitionError(event) {
       fluencyTState.tokens = [];
       fluencyTState.entries = [];
       fluencyTState.uniqueWords = new Set();
+      resetFluencyAIReview(fluencyTState);
       captureContext = null;
       if (fluencyTState.timer.rafId) {
         cancelAnimationFrame(fluencyTState.timer.rafId);
@@ -2848,6 +2875,292 @@ function addManualEntry() {
   updateUI();
 }
 
+function startInlineEdit(targetEl, initialValue, onCommit) {
+  if (!targetEl || targetEl.querySelector("input")) {
+    return;
+  }
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "inline-editor";
+  input.value = initialValue || "";
+  targetEl.textContent = "";
+  targetEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  let finished = false;
+  const finalize = shouldCommit => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    if (shouldCommit) {
+      onCommit(input.value || "");
+    } else {
+      targetEl.textContent = initialValue || "";
+    }
+  };
+
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finalize(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finalize(false);
+    }
+  });
+  input.addEventListener("blur", () => finalize(true));
+}
+
+function reorderArray(values, fromIndex, toIndex) {
+  if (!Array.isArray(values)) {
+    return;
+  }
+  const length = values.length;
+  if (fromIndex < 0 || fromIndex >= length || toIndex < 0 || toIndex >= length) {
+    return;
+  }
+  const [moved] = values.splice(fromIndex, 1);
+  values.splice(toIndex, 0, moved);
+}
+
+function resetFluencyAIReview(state) {
+  state.aiReview = [];
+  state.aiKeepMask = [];
+  state.processedWords = [];
+  state.processedNotes = [];
+}
+
+function buildFluencyAIReview(state, data = {}) {
+  const rawWords = state.entries.map(entry => entry.word);
+  const processedWords = Array.isArray(data.processed_words) ? data.processed_words : [];
+  const rationales = Array.isArray(data.rationale) ? data.rationale : [];
+  const processedCanonical = processedWords.map(word => canonicalize(word)).filter(Boolean);
+  const processedSet = new Set(processedCanonical);
+  const rationaleByProcessed = new Map();
+
+  if (rationales.length === processedWords.length) {
+    processedWords.forEach((word, idx) => {
+      const key = canonicalize(word);
+      if (key && !rationaleByProcessed.has(key)) {
+        rationaleByProcessed.set(key, rationales[idx] || "");
+      }
+    });
+  }
+
+  state.aiKeepMask = rawWords.map(word => {
+    const canonical = canonicalize(word);
+    return Boolean(canonical && processedSet.has(canonical));
+  });
+  state.aiReview = rawWords.map((word, idx) => {
+    if (state.aiKeepMask[idx]) {
+      return null;
+    }
+    const canonical = canonicalize(word);
+    let rationale = "";
+    if (rationales.length === rawWords.length) {
+      rationale = rationales[idx] || "";
+    } else if (rationales.length === processedWords.length) {
+      rationale = rationaleByProcessed.get(canonical) || "";
+    }
+    return {
+      suggestion: "remove",
+      decision: "pending",
+      rationale
+    };
+  });
+  state.processedWords = rawWords.filter((_, idx) => state.aiKeepMask[idx]);
+  state.processedNotes = rationales.slice();
+}
+
+function updateFluencyProcessedFromReview(state) {
+  if (!Array.isArray(state.aiReview) || state.aiReview.length !== state.entries.length) {
+    return;
+  }
+  const reviewed = [];
+  state.entries.forEach((entry, idx) => {
+    const word = entry ? entry.word : "";
+    if (!word) {
+      return;
+    }
+    const keepByAI = Array.isArray(state.aiKeepMask) ? state.aiKeepMask[idx] : false;
+    if (keepByAI) {
+      reviewed.push(word);
+      return;
+    }
+    const review = state.aiReview[idx];
+    if (review && review.decision === "rejected") {
+      reviewed.push(word);
+    }
+  });
+  state.processedWords = reviewed;
+}
+
+function setFluencyReviewDecision(state, index, decision) {
+  if (!state.aiReview || !state.aiReview[index]) {
+    return;
+  }
+  const current = state.aiReview[index].decision;
+  state.aiReview[index].decision = current === decision ? "pending" : decision;
+  updateFluencyProcessedFromReview(state);
+}
+
+function applyFluencyReorder(state, listType, fromIndex, toIndex) {
+  if (!state) {
+    return;
+  }
+  if (listType === "raw") {
+    reorderArray(state.entries, fromIndex, toIndex);
+    reorderArray(state.tokens, fromIndex, toIndex);
+    reorderArray(state.aiReview, fromIndex, toIndex);
+    reorderArray(state.aiKeepMask, fromIndex, toIndex);
+    updateFluencyProcessedFromReview(state);
+    return;
+  }
+  if (listType === "scored") {
+    if (!Array.isArray(state.processedWords)) {
+      state.processedWords = [];
+    }
+    reorderArray(state.processedWords, fromIndex, toIndex);
+  }
+}
+
+function attachFluencyDragHandlers(cell, options, onDrop) {
+  if (!cell) {
+    return;
+  }
+  cell.draggable = true;
+  cell.classList.add("draggable-word");
+  cell.addEventListener("dragstart", event => {
+    fluencyDragState = {
+      scope: options.scope,
+      listType: options.listType,
+      index: options.index
+    };
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+    }
+    cell.classList.add("dragging");
+  });
+  cell.addEventListener("dragend", () => {
+    cell.classList.remove("dragging");
+    fluencyDragState = null;
+  });
+  cell.addEventListener("dragover", event => {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    cell.classList.add("drag-over");
+  });
+  cell.addEventListener("dragleave", () => {
+    cell.classList.remove("drag-over");
+  });
+  cell.addEventListener("drop", event => {
+    event.preventDefault();
+    cell.classList.remove("drag-over");
+    if (!fluencyDragState) {
+      return;
+    }
+    if (fluencyDragState.scope !== options.scope || fluencyDragState.listType !== options.listType) {
+      return;
+    }
+    if (fluencyDragState.index === options.index) {
+      return;
+    }
+    onDrop(fluencyDragState.index, options.index);
+  });
+}
+
+function recomputeFluencyUniqueWords(state, validator) {
+  state.uniqueWords = new Set();
+  state.tokens.forEach(token => {
+    if (validator(token)) {
+      state.uniqueWords.add(token);
+    }
+  });
+}
+
+function removeFluencyEntry(state, entryIndex, validator) {
+  if (entryIndex < 0 || entryIndex >= state.tokens.length) {
+    return;
+  }
+  state.tokens.splice(entryIndex, 1);
+  state.entries.splice(entryIndex, 1);
+  if (Array.isArray(state.aiReview)) {
+    state.aiReview.splice(entryIndex, 1);
+  }
+  if (Array.isArray(state.aiKeepMask)) {
+    state.aiKeepMask.splice(entryIndex, 1);
+  }
+  recomputeFluencyUniqueWords(state, validator);
+  updateFluencyProcessedFromReview(state);
+}
+
+function applyFluencyEntryEdit(state, entryIndex, rawValue, validator) {
+  if (entryIndex < 0 || entryIndex >= state.tokens.length) {
+    return;
+  }
+  const tokens = tokenize(rawValue);
+  if (!tokens.length) {
+    state.tokens.splice(entryIndex, 1);
+    state.entries.splice(entryIndex, 1);
+  } else {
+    const token = tokens[0];
+    state.tokens[entryIndex] = token;
+    if (state.entries[entryIndex]) {
+      state.entries[entryIndex].word = token;
+    } else {
+      state.entries[entryIndex] = { word: token, timestamp: Date.now() };
+    }
+  }
+  recomputeFluencyUniqueWords(state, validator);
+  resetFluencyAIReview(state);
+}
+
+function addFluencyTokens(state, rawValue, validator) {
+  const tokens = tokenize(rawValue);
+  if (!tokens.length) {
+    return;
+  }
+  const timestamp = Date.now();
+  tokens.forEach(token => {
+    state.tokens.push(token);
+    state.entries.push({ word: token, timestamp });
+  });
+  recomputeFluencyUniqueWords(state, validator);
+  resetFluencyAIReview(state);
+}
+
+function addFluencyManualEntry() {
+  if (!dom.fluencyManualInput) {
+    return;
+  }
+  const value = (dom.fluencyManualInput.value || "").trim();
+  if (!value) {
+    return;
+  }
+  addFluencyTokens(fluencyState, value, token => isValidFluencyWord(token));
+  dom.fluencyManualInput.value = "";
+  updateFluencyUI();
+}
+
+function addFluencyTManualEntry() {
+  if (!dom.fluencyTManualInput) {
+    return;
+  }
+  const value = (dom.fluencyTManualInput.value || "").trim();
+  if (!value) {
+    return;
+  }
+  addFluencyTokens(fluencyTState, value, token =>
+    isValidFluencyWord(token, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)
+  );
+  dom.fluencyTManualInput.value = "";
+  updateFluencyTUI();
+}
+
 function moveToIndex(index, options = {}) {
   const { force = false, keepListening = false } = options;
   if (namingSessionEnded && (!captureContext || captureContext.type === "naming")) {
@@ -3058,9 +3371,43 @@ function updateFluencyUI() {
       live.innerHTML = '<span class="muted">No words captured yet.</span>';
     } else {
       const frag = document.createDocumentFragment();
-      fluencyState.tokens.slice(-20).forEach(token => {
+      const startIndex = Math.max(0, fluencyState.tokens.length - 20);
+      fluencyState.tokens.slice(-20).forEach((token, idx) => {
         const chip = document.createElement("span");
-        chip.textContent = token;
+        chip.className = "editable-word word-chip";
+        const label = document.createElement("span");
+        label.textContent = token;
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "remove-btn";
+        removeBtn.textContent = "×";
+        const tokenIndex = startIndex + idx;
+        chip.addEventListener("dblclick", () => {
+          startInlineEdit(label, token, value => {
+            applyFluencyEntryEdit(fluencyState, tokenIndex, value, tokenValue =>
+              isValidFluencyWord(tokenValue)
+            );
+            updateFluencyUI();
+          });
+        });
+        chip.addEventListener("contextmenu", event => {
+          event.preventDefault();
+          removeFluencyEntry(fluencyState, tokenIndex, tokenValue => isValidFluencyWord(tokenValue));
+          updateFluencyUI();
+        });
+        removeBtn.addEventListener("click", () => {
+          removeFluencyEntry(fluencyState, tokenIndex, tokenValue => isValidFluencyWord(tokenValue));
+          updateFluencyUI();
+        });
+        attachFluencyDragHandlers(
+          chip,
+          { scope: "fluency", listType: "raw", index: tokenIndex },
+          (fromIndex, toIndex) => {
+            applyFluencyReorder(fluencyState, "raw", fromIndex, toIndex);
+            updateFluencyUI();
+          }
+        );
+        chip.append(label, removeBtn);
         frag.appendChild(chip);
       });
       live.innerHTML = "";
@@ -3071,10 +3418,11 @@ function updateFluencyUI() {
   const logBody = document.getElementById("fluency-log-body");
   if (logBody) {
     const rawWords = fluencyState.entries.map(entry => entry.word);
-    const processed = fluencyState.processedWords || [];
+    const processed = Array.isArray(fluencyState.processedWords) ? fluencyState.processedWords : [];
+    const aiReview = Array.isArray(fluencyState.aiReview) ? fluencyState.aiReview : [];
     const rowCount = Math.max(rawWords.length, processed.length);
     if (!rowCount) {
-      logBody.innerHTML = '<tr class="empty-row"><td colspan="3">No responses yet.</td></tr>';
+      logBody.innerHTML = '<tr class="empty-row"><td colspan="4">No responses yet.</td></tr>';
     } else {
       const frag = document.createDocumentFragment();
       for (let i = 0; i < rowCount; i += 1) {
@@ -3082,10 +3430,96 @@ function updateFluencyUI() {
         const num = document.createElement("td");
         num.textContent = i + 1;
         const rawTd = document.createElement("td");
-        rawTd.textContent = rawWords[i] || "";
+        rawTd.classList.add("raw-cell");
+        const rawLabel = document.createElement("span");
+        rawLabel.textContent = rawWords[i] || "";
+        rawTd.appendChild(rawLabel);
+        if (rawWords[i]) {
+          rawTd.classList.add("editable-word");
+          attachInlineEdit(rawLabel, rawWords[i] || "", newText => {
+            applyFluencyEntryEdit(fluencyState, i, newText, tokenValue =>
+              isValidFluencyWord(tokenValue)
+            );
+            updateFluencyUI();
+          });
+          const deleteBtn = document.createElement("button");
+          deleteBtn.type = "button";
+          deleteBtn.className = "remove-btn";
+          deleteBtn.textContent = "×";
+          deleteBtn.addEventListener("click", () => {
+            removeFluencyEntry(fluencyState, i, tokenValue => isValidFluencyWord(tokenValue));
+            updateFluencyUI();
+          });
+          rawTd.appendChild(deleteBtn);
+          attachFluencyDragHandlers(
+            rawTd,
+            { scope: "fluency", listType: "raw", index: i },
+            (fromIndex, toIndex) => {
+              applyFluencyReorder(fluencyState, "raw", fromIndex, toIndex);
+              updateFluencyUI();
+            }
+          );
+        }
+        const aiTd = document.createElement("td");
+        aiTd.className = "ai-cell";
+        const review = aiReview.length === rawWords.length ? aiReview[i] : null;
+        if (review) {
+          const pill = document.createElement("span");
+          pill.className = "ai-pill remove";
+          pill.textContent = `Remove "${rawWords[i] || ""}"?`;
+          const infoWrap = document.createElement("span");
+          infoWrap.className = "ai-pop";
+          const pop = document.createElement("span");
+          pop.className = "ai-popover";
+          pop.textContent = review.rationale || "No rationale provided.";
+          pill.addEventListener("click", event => {
+            event.stopPropagation();
+            pop.classList.toggle("show");
+          });
+          infoWrap.append(pill, pop);
+
+          const reviewWrap = document.createElement("span");
+          reviewWrap.className = "review-actions";
+          const acceptBtn = document.createElement("button");
+          acceptBtn.type = "button";
+          acceptBtn.className = "icon-btn accept";
+          acceptBtn.textContent = "✓";
+          if (review.decision === "accepted") {
+            acceptBtn.classList.add("selected");
+          }
+          acceptBtn.addEventListener("click", () => {
+            setFluencyReviewDecision(fluencyState, i, "accepted");
+            updateFluencyUI();
+          });
+          const rejectBtn = document.createElement("button");
+          rejectBtn.type = "button";
+          rejectBtn.className = "icon-btn reject";
+          rejectBtn.textContent = "✕";
+          if (review.decision === "rejected") {
+            rejectBtn.classList.add("selected");
+          }
+          rejectBtn.addEventListener("click", () => {
+            setFluencyReviewDecision(fluencyState, i, "rejected");
+            updateFluencyUI();
+          });
+          reviewWrap.append(acceptBtn, rejectBtn);
+          aiTd.append(infoWrap, reviewWrap);
+        } else {
+          aiTd.textContent = "—";
+        }
         const scoredTd = document.createElement("td");
         scoredTd.textContent = processed[i] || "";
-        tr.append(num, rawTd, scoredTd);
+        if (processed[i]) {
+          attachFluencyDragHandlers(
+            scoredTd,
+            { scope: "fluency", listType: "scored", index: i },
+            (fromIndex, toIndex) => {
+              applyFluencyReorder(fluencyState, "scored", fromIndex, toIndex);
+              updateFluencyUI();
+            }
+          );
+        }
+        tr.append(num, rawTd, scoredTd, aiTd);
         frag.appendChild(tr);
       }
       logBody.innerHTML = "";
@@ -3176,9 +3610,47 @@ function updateFluencyTUI() {
       dom.fluencyTLiveWords.innerHTML = '<span class="muted">No words captured yet.</span>';
     } else {
       const frag = document.createDocumentFragment();
-      fluencyTState.tokens.slice(-20).forEach(token => {
+      const startIndex = Math.max(0, fluencyTState.tokens.length - 20);
+      fluencyTState.tokens.slice(-20).forEach((token, idx) => {
         const chip = document.createElement("span");
-        chip.textContent = token;
+        chip.className = "editable-word word-chip";
+        const label = document.createElement("span");
+        label.textContent = token;
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "remove-btn";
+        removeBtn.textContent = "×";
+        const tokenIndex = startIndex + idx;
+        chip.addEventListener("dblclick", () => {
+          startInlineEdit(label, token, value => {
+            applyFluencyEntryEdit(fluencyTState, tokenIndex, value, tokenValue =>
+              isValidFluencyWord(tokenValue, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)
+            );
+            updateFluencyTUI();
+          });
+        });
+        chip.addEventListener("contextmenu", event => {
+          event.preventDefault();
+          removeFluencyEntry(fluencyTState, tokenIndex, tokenValue =>
+            isValidFluencyWord(tokenValue, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)
+          );
+          updateFluencyTUI();
+        });
+        removeBtn.addEventListener("click", () => {
+          removeFluencyEntry(fluencyTState, tokenIndex, tokenValue =>
+            isValidFluencyWord(tokenValue, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)
+          );
+          updateFluencyTUI();
+        });
+        attachFluencyDragHandlers(
+          chip,
+          { scope: "fluencyT", listType: "raw", index: tokenIndex },
+          (fromIndex, toIndex) => {
+            applyFluencyReorder(fluencyTState, "raw", fromIndex, toIndex);
+            updateFluencyTUI();
+          }
+        );
+        chip.append(label, removeBtn);
         frag.appendChild(chip);
       });
       dom.fluencyTLiveWords.innerHTML = "";
@@ -3188,10 +3660,11 @@ function updateFluencyTUI() {
 
   if (dom.fluencyTLogBody) {
     const rawWords = fluencyTState.entries.map(entry => entry.word);
-    const processed = fluencyTState.processedWords || [];
+    const processed = Array.isArray(fluencyTState.processedWords) ? fluencyTState.processedWords : [];
+    const aiReview = Array.isArray(fluencyTState.aiReview) ? fluencyTState.aiReview : [];
     const rowCount = Math.max(rawWords.length, processed.length);
     if (!rowCount) {
-      dom.fluencyTLogBody.innerHTML = '<tr class="empty-row"><td colspan="3">No responses yet.</td></tr>';
+      dom.fluencyTLogBody.innerHTML = '<tr class="empty-row"><td colspan="4">No responses yet.</td></tr>';
     } else {
       const frag = document.createDocumentFragment();
       for (let i = 0; i < rowCount; i += 1) {
@@ -3199,10 +3672,98 @@ function updateFluencyTUI() {
         const num = document.createElement("td");
         num.textContent = i + 1;
         const rawTd = document.createElement("td");
-        rawTd.textContent = rawWords[i] || "";
+        rawTd.classList.add("raw-cell");
+        const rawLabel = document.createElement("span");
+        rawLabel.textContent = rawWords[i] || "";
+        rawTd.appendChild(rawLabel);
+        if (rawWords[i]) {
+          rawTd.classList.add("editable-word");
+          attachInlineEdit(rawLabel, rawWords[i] || "", newText => {
+            applyFluencyEntryEdit(fluencyTState, i, newText, tokenValue =>
+              isValidFluencyWord(tokenValue, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)
+            );
+            updateFluencyTUI();
+          });
+          const deleteBtn = document.createElement("button");
+          deleteBtn.type = "button";
+          deleteBtn.className = "remove-btn";
+          deleteBtn.textContent = "×";
+          deleteBtn.addEventListener("click", () => {
+            removeFluencyEntry(fluencyTState, i, tokenValue =>
+              isValidFluencyWord(tokenValue, FLUENCY_T_LETTER, FLUENCY_T_LENGTH)
+            );
+            updateFluencyTUI();
+          });
+          rawTd.appendChild(deleteBtn);
+          attachFluencyDragHandlers(
+            rawTd,
+            { scope: "fluencyT", listType: "raw", index: i },
+            (fromIndex, toIndex) => {
+              applyFluencyReorder(fluencyTState, "raw", fromIndex, toIndex);
+              updateFluencyTUI();
+            }
+          );
+        }
+        const aiTd = document.createElement("td");
+        aiTd.className = "ai-cell";
+        const review = aiReview.length === rawWords.length ? aiReview[i] : null;
+        if (review) {
+          const pill = document.createElement("span");
+          pill.className = "ai-pill remove";
+          pill.textContent = `Remove "${rawWords[i] || ""}"?`;
+          const infoWrap = document.createElement("span");
+          infoWrap.className = "ai-pop";
+          const pop = document.createElement("span");
+          pop.className = "ai-popover";
+          pop.textContent = review.rationale || "No rationale provided.";
+          pill.addEventListener("click", event => {
+            event.stopPropagation();
+            pop.classList.toggle("show");
+          });
+          infoWrap.append(pill, pop);
+
+          const reviewWrap = document.createElement("span");
+          reviewWrap.className = "review-actions";
+          const acceptBtn = document.createElement("button");
+          acceptBtn.type = "button";
+          acceptBtn.className = "icon-btn accept";
+          acceptBtn.textContent = "✓";
+          if (review.decision === "accepted") {
+            acceptBtn.classList.add("selected");
+          }
+          acceptBtn.addEventListener("click", () => {
+            setFluencyReviewDecision(fluencyTState, i, "accepted");
+            updateFluencyTUI();
+          });
+          const rejectBtn = document.createElement("button");
+          rejectBtn.type = "button";
+          rejectBtn.className = "icon-btn reject";
+          rejectBtn.textContent = "✕";
+          if (review.decision === "rejected") {
+            rejectBtn.classList.add("selected");
+          }
+          rejectBtn.addEventListener("click", () => {
+            setFluencyReviewDecision(fluencyTState, i, "rejected");
+            updateFluencyTUI();
+          });
+          reviewWrap.append(acceptBtn, rejectBtn);
+          aiTd.append(infoWrap, reviewWrap);
+        } else {
+          aiTd.textContent = "—";
+        }
         const scoredTd = document.createElement("td");
         scoredTd.textContent = processed[i] || "";
-        tr.append(num, rawTd, scoredTd);
+        if (processed[i]) {
+          attachFluencyDragHandlers(
+            scoredTd,
+            { scope: "fluencyT", listType: "scored", index: i },
+            (fromIndex, toIndex) => {
+              applyFluencyReorder(fluencyTState, "scored", fromIndex, toIndex);
+              updateFluencyTUI();
+            }
+          );
+        }
+        tr.append(num, rawTd, scoredTd, aiTd);
         frag.appendChild(tr);
       }
       dom.fluencyTLogBody.innerHTML = "";

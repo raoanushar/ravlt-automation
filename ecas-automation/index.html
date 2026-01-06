@@ -344,7 +344,7 @@
           <div class="log-header">
             <p class="eyebrow">Response log</p>
           </div>
-          <table>
+          <table class="fluency-table">
             <thead>
               <tr>
                 <th>Correct Response</th>
@@ -455,22 +455,32 @@
           <div id="fluency-live-words" class="live-words"></div>
         </div>
 
+        <div class="manual-entry">
+          <p class="eyebrow">Adjust words</p>
+          <div class="manual-input-row">
+            <input type="text" id="fluency-manual-input" placeholder="Add word" />
+            <button class="ghost" id="fluency-manual-add">Add</button>
+          </div>
+          <p class="muted">Double-click a word in the transcription or list to edit it. Clear to remove.</p>
+        </div>
+
         <div class="log">
           <div class="log-header">
             <p class="eyebrow">Words captured</p>
             <button class="ghost" id="fluency-score-llm-btn">Score with AI Assistant</button>
           </div>
-          <table>
+          <table class="fluency-table">
             <thead>
               <tr>
                 <th>#</th>
                 <th>Raw Response List</th>
                 <th id="fluency-scored-col">Scored Response List</th>
+                <th>AI Co-pilot Suggestions</th>
               </tr>
             </thead>
             <tbody id="fluency-log-body">
               <tr class="empty-row">
-                <td colspan="3">No responses yet.</td>
+                <td colspan="4">No responses yet.</td>
               </tr>
             </tbody>
             <tfoot>
@@ -478,9 +488,10 @@
                 <th>Total</th>
                 <th id="fluency-raw-total"></th>
                 <th id="fluency-processed-total"></th>
+                <th></th>
               </tr>
               <tr>
-                <th colspan="3" style="text-align:right">Section Score (0-12): <span id="fluency-section-score">0</span></th>
+                <th colspan="4" style="text-align:right">Section Score (0-12): <span id="fluency-section-score">0</span></th>
               </tr>
             </tfoot>
           </table>
@@ -730,6 +741,15 @@
           <div id="fluency-t-live-words" class="live-words"></div>
         </div>
 
+        <div class="manual-entry">
+          <p class="eyebrow">Adjust words</p>
+          <div class="manual-input-row">
+            <input type="text" id="fluency-t-manual-input" placeholder="Add word" />
+            <button class="ghost" id="fluency-t-manual-add">Add</button>
+          </div>
+          <p class="muted">Double-click a word in the transcription or list to edit it. Clear to remove.</p>
+        </div>
+
         <div class="result-grid">
           <div class="result-card">
             <p class="eyebrow">Score</p>
@@ -749,11 +769,12 @@
                 <th>#</th>
                 <th>Raw Response List</th>
                 <th id="fluency-t-scored-col">Scored Response List</th>
+                <th>AI Co-pilot Suggestions</th>
               </tr>
             </thead>
             <tbody id="fluency-t-log-body">
               <tr class="empty-row">
-                <td colspan="3">No responses yet.</td>
+                <td colspan="4">No responses yet.</td>
               </tr>
             </tbody>
             <tfoot>
@@ -761,9 +782,10 @@
                 <th>Total</th>
                 <th id="fluency-t-raw-total"></th>
                 <th id="fluency-t-processed-total"></th>
+                <th></th>
               </tr>
               <tr>
-                <th colspan="3" style="text-align:right">Section Score (0-12): <span id="fluency-t-section-score">0</span></th>
+                <th colspan="4" style="text-align:right">Section Score (0-12): <span id="fluency-t-section-score">0</span></th>
               </tr>
             </tfoot>
           </table>
