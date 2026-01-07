@@ -201,6 +201,20 @@ header h1 {
   margin-bottom: 1rem;
 }
 
+.session-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.session-duration {
+  font-weight: 700;
+  color: var(--text);
+  min-width: 56px;
+  text-align: right;
+}
+
 .stage-header h2 {
   margin: 0.15rem 0 0;
 }

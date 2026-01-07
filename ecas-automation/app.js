@@ -395,6 +395,7 @@ let digitsSessionEnded = false;
 let dotsSessionEnded = false;
 let cubesSessionEnded = false;
 let numberlocSessionEnded = false;
+const sessionTimers = new Map();
 const storyState = {
   status: "pending",
   tokens: [],
@@ -512,6 +513,7 @@ function init() {
   setupCubes();
   setupNumberLoc();
   setupSentenceScoreEditing();
+  setupSessionTimers();
   updateUI();
 }
 
@@ -801,6 +803,103 @@ function setupSentenceScoreEditing() {
       input.addEventListener("blur", () => commit(true));
     });
   });
+}
+
+function setupSessionTimers() {
+  document.querySelectorAll("section.stage-card").forEach(section => {
+    const sectionId = section.getAttribute("id") || `section-${sessionTimers.size + 1}`;
+    if (sessionTimers.has(sectionId)) {
+      return;
+    }
+    const display = document.createElement("span");
+    display.className = "session-duration";
+    display.textContent = "00:00";
+
+    const startBtn = document.createElement("button");
+    startBtn.type = "button";
+    startBtn.className = "ghost";
+    startBtn.textContent = "Start Session";
+
+    const endBtn = document.createElement("button");
+    endBtn.type = "button";
+    endBtn.className = "ghost";
+    endBtn.textContent = "End Session";
+
+    const controls = document.createElement("div");
+    controls.className = "session-controls";
+    controls.append(startBtn, endBtn, display);
+
+    const header = section.querySelector(".stage-header");
+    if (header) {
+      header.appendChild(controls);
+    } else {
+      section.insertBefore(controls, section.firstChild);
+    }
+
+    const timerState = {
+      startTime: null,
+      elapsedMs: 0,
+      intervalId: null,
+      display
+    };
+    sessionTimers.set(sectionId, timerState);
+
+    startBtn.addEventListener("click", () => startSessionTimer(sectionId));
+    endBtn.addEventListener("click", () => stopSessionTimer(sectionId));
+
+    const resetButtons = section.querySelectorAll("button.ghost.danger");
+    resetButtons.forEach(btn => {
+      if (btn.textContent.toLowerCase().includes("reset")) {
+        btn.addEventListener("click", () => resetSessionTimer(sectionId));
+      }
+    });
+  });
+}
+
+function startSessionTimer(sectionId) {
+  const state = sessionTimers.get(sectionId);
+  if (!state || state.intervalId) {
+    return;
+  }
+  state.startTime = Date.now();
+  state.intervalId = setInterval(() => {
+    const elapsed = Date.now() - state.startTime + state.elapsedMs;
+    state.display.textContent = formatDuration(elapsed);
+  }, 500);
+}
+
+function stopSessionTimer(sectionId) {
+  const state = sessionTimers.get(sectionId);
+  if (!state || !state.intervalId) {
+    return;
+  }
+  const now = Date.now();
+  state.elapsedMs += now - state.startTime;
+  clearInterval(state.intervalId);
+  state.intervalId = null;
+  state.startTime = null;
+  state.display.textContent = formatDuration(state.elapsedMs);
+}
+
+function resetSessionTimer(sectionId) {
+  const state = sessionTimers.get(sectionId);
+  if (!state) {
+    return;
+  }
+  if (state.intervalId) {
+    clearInterval(state.intervalId);
+  }
+  state.intervalId = null;
+  state.startTime = null;
+  state.elapsedMs = 0;
+  state.display.textContent = "00:00";
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 function setAIDemoMode(enabled) {
