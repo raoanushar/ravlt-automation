@@ -399,7 +399,10 @@ const storyState = {
   status: "pending",
   tokens: [],
   entries: [],
-  timestamp: null
+  timestamp: null,
+  manualTranscript: "",
+  manualEdited: false,
+  editingLive: false
 };
 const STORY_CRITERIA = [
   { key: "sunday", checkboxId: "story-sunday" },
@@ -615,6 +618,16 @@ function bindControls() {
   }
   if (dom.storyResetBtn) {
     dom.storyResetBtn.addEventListener("click", resetStory);
+  }
+  if (dom.storyLiveWords) {
+    dom.storyLiveWords.addEventListener("dblclick", () => {
+      if (!storyState.editingLive) {
+        storyState.manualTranscript = getStoryTranscript();
+        storyState.manualEdited = true;
+        storyState.editingLive = true;
+        renderStoryUI();
+      }
+    });
   }
   if (dom.storyScoreBtn) {
     dom.storyScoreBtn.addEventListener("click", scoreStoryWithLLM);
@@ -1923,6 +1936,9 @@ function startStoryListening() {
   storyState.tokens = [];
   storyState.entries = [];
   storyState.timestamp = null;
+  storyState.manualTranscript = "";
+  storyState.manualEdited = false;
+  storyState.editingLive = false;
   captureContext = { type: "story" };
   isStopping = false;
   try {
@@ -1962,10 +1978,16 @@ function resetStory() {
   storyState.tokens = [];
   storyState.entries = [];
   storyState.timestamp = null;
+  storyState.manualTranscript = "";
+  storyState.manualEdited = false;
+  storyState.editingLive = false;
   renderStoryUI();
 }
 
 function getStoryTranscript() {
+  if (storyState.manualEdited) {
+    return storyState.manualTranscript || "";
+  }
   if (!storyState.entries.length) {
     return "";
   }
@@ -2597,6 +2619,18 @@ function handleRecognitionResult(event) {
         tokens
       });
       storyState.tokens.push(...tokens);
+      if (storyState.manualEdited) {
+        const trimmed = transcript.trim();
+        if (trimmed) {
+          storyState.manualTranscript = storyState.manualTranscript
+            ? `${storyState.manualTranscript}\n${trimmed}`
+            : trimmed;
+          const textarea = dom.storyLiveWords ? dom.storyLiveWords.querySelector("textarea") : null;
+          if (textarea) {
+            textarea.value = storyState.manualTranscript;
+          }
+        }
+      }
     }
     renderStoryUI();
   }
@@ -2747,6 +2781,9 @@ function handleRecognitionError(event) {
       storyState.status = "pending";
       storyState.tokens = [];
       storyState.entries = [];
+      storyState.manualTranscript = "";
+      storyState.manualEdited = false;
+      storyState.editingLive = false;
       captureContext = null;
       renderStoryUI();
     }
@@ -4048,8 +4085,40 @@ function renderStoryUI() {
   }
 
   if (dom.storyLiveWords) {
-    const transcript = getStoryTranscript();
-    dom.storyLiveWords.textContent = transcript || "No words captured yet.";
+    if (storyState.editingLive) {
+      if (!dom.storyLiveWords.querySelector("textarea")) {
+        const textarea = document.createElement("textarea");
+        textarea.className = "story-live-edit";
+        textarea.value = getStoryTranscript();
+        dom.storyLiveWords.innerHTML = "";
+        dom.storyLiveWords.appendChild(textarea);
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        const previousValue = textarea.value;
+        textarea.addEventListener("keydown", event => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            storyState.manualTranscript = previousValue;
+            storyState.manualEdited = true;
+            storyState.editingLive = false;
+            renderStoryUI();
+          }
+        });
+        textarea.addEventListener("input", () => {
+          storyState.manualTranscript = textarea.value;
+          storyState.manualEdited = true;
+        });
+        textarea.addEventListener("blur", () => {
+          storyState.manualTranscript = textarea.value;
+          storyState.manualEdited = true;
+          storyState.editingLive = false;
+          renderStoryUI();
+        });
+      }
+    } else {
+      const transcript = getStoryTranscript();
+      dom.storyLiveWords.textContent = transcript || "No words captured yet.";
+    }
   }
 
   if (dom.storyLogBody) {
