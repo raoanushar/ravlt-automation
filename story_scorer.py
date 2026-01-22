@@ -102,7 +102,7 @@ They earn 1 point for each criterion they satisfy or mention:
 1. If they mention the word "Sunday" → Only the exact word “Sunday” is accepted.
 2. If they mention the "Annual Park Cleanup" → Accept: “Annual cleanup”, “garbage cleanup”, “park cleanup”, “annual trash cleanup”.
 3. If they mention "Marigold Woods" → Any part of “Marigold Woods” verbatim, or a similar place such as “forest”, “park”.
-4. If they recall the number "Forty two" → Only “Forty-two”.
+4. If they recall the number "Forty two" → Can be either the raw number 42 or word version "forty two" etc.
 5. If they mention "Bicycles and shopping carts" → Must mention BOTH items; similar terms like “carts” or “trolley” are allowed.
 6. If they mention "Robert Webber" → A mention of “Robert” and/or “Webber” will suffice to earn the point.
 7. If they mention the "Woodland project" → Mention of “woodland” + a project synonym like “plan”, “initiative”, “program”.
@@ -129,6 +129,13 @@ Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.
 - "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Sally (proper name)", "Removed Sedona (place)").
 """
+
+def build_story_prompt(transcript: str, override: str | None) -> str:
+    base = (override or "").strip() or SCORING_PROMPT
+    if "<<TRANSCRIPT>>" in base:
+        return base.replace("<<TRANSCRIPT>>", transcript)
+    return f"{base}\n\nTranscript:\n{transcript}"
+
 
 api_key = os.getenv("OPENAI_API_KEY", "")
 client = OpenAI(api_key=api_key)
@@ -169,7 +176,8 @@ def score_story():
 
     data = request.get_json(force=True) or {}
     transcript = data.get("transcript", "") or ""
-    prompt = SCORING_PROMPT.replace("<<TRANSCRIPT>>", transcript)
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt = build_story_prompt(transcript, override)
     logging.info("Scoring request received. Transcript length: %s", len(transcript))
 
     try:
@@ -211,13 +219,15 @@ def score_fluency():
         return jsonify({"error": "OPENAI_API_KEY not set"}), 400
     data = request.get_json(force=True) or {}
     words = data.get("words", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or FLUENCY_PROMPT
     logging.info("Fluency scoring request. Raw words count: %s", len(words))
     try:
         completion = client.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You process fluency word lists following strict scoring rules."},
-                {"role": "user", "content": f"{FLUENCY_PROMPT}\n\nRaw words:\n{words}"},
+                {"role": "user", "content": f"{prompt_text}\n\nRaw words:\n{words}"},
             ],
             response_format=FluencyScore,
         )
@@ -255,13 +265,15 @@ def score_fluency_t():
         return jsonify({"error": "OPENAI_API_KEY not set"}), 400
     data = request.get_json(force=True) or {}
     words = data.get("words", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or FLUENCY_T_PROMPT
     logging.info("Fluency-T scoring request. Raw words count: %s", len(words))
     try:
         completion = client.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You process fluency word lists following strict scoring rules."},
-                {"role": "user", "content": f"{FLUENCY_T_PROMPT}\n\nRaw words:\n{words}"},
+                {"role": "user", "content": f"{prompt_text}\n\nRaw words:\n{words}"},
             ],
             response_format=FluencyScore,
         )
@@ -289,6 +301,8 @@ def score_sentences():
         return jsonify({"error": "OPENAI_API_KEY not set"}), 400
     data = request.get_json(force=True) or {}
     responses = data.get("responses", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or SENTENCE_PROMPT
     logging.info("Sentence scoring request. Responses count: %s", len(responses))
     lines = []
     for idx, item in enumerate(responses, start=1):
@@ -301,7 +315,7 @@ def score_sentences():
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You score sentence completion responses strictly."},
-                {"role": "user", "content": f"{SENTENCE_PROMPT}\n\nParticipant responses:\n{payload_text}"},
+                {"role": "user", "content": f"{prompt_text}\n\nParticipant responses:\n{payload_text}"},
             ],
             response_format=SentenceScore,
         )

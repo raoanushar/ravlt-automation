@@ -146,6 +146,82 @@ const sentencePrompts = [
   "They all went to the local café for something to"
 ];
 
+const PROMPT_DEFAULTS = {
+  story: `You are an EDINBURGH COGNITIVE AND BEHAVIORAL ALS SCREEN proctor agent.
+
+Context: The participant was read a story and then was asked to freely recall what they could remember.
+
+Raw Transcript of what participant recalled:
+"<<TRANSCRIPT>>"
+
+--
+Your job is to score their response based on these criteria.
+They earn 1 point for each criterion they satisfy or mention:
+
+1. If they mention the word "Sunday" → Only the exact word “Sunday” is accepted.
+2. If they mention the "Annual Park Cleanup" → Accept: “Annual cleanup”, “garbage cleanup”, “park cleanup”, “annual trash cleanup”.
+3. If they mention "Marigold Woods" → Any part of “Marigold Woods” verbatim, or a similar place such as “forest”, “park”.
+4. If they recall the number "Forty two" → Only “Forty-two”.
+5. If they mention "Bicycles and shopping carts" → Must mention BOTH items; similar terms like “carts” or “trolley” are allowed.
+6. If they mention "Robert Webber" → A mention of “Robert” and/or “Webber” will suffice to earn the point.
+7. If they mention the "Woodland project" → Mention of “woodland” + a project synonym like “plan”, “initiative”, “program”.
+8. If they mention "Impressed and especially proud" → Any positive emotional response (e.g., “pleased”) would suffice to earn the point.
+9. If they recall the number "Seventeen" → Only “Seventeen”.
+10. If they recall there were "Children" → “Children”, “kids”, or similar term.
+
+Return ONLY the JSON with yes/no values for each field.`,
+  fluency: `You are scoring a verbal fluency task for the letter "S".
+Given the raw list of spoken words, produce a processed list that follows these rules:
+- No names of people, places, or numbers.
+- Words must be varied (e.g., sugar, salt, slipper, snow, scream, shoot, scale, scissors).
+- Do not include repetitions, nonsense words (not in an English dictionary), or proper names.
+- If a second meaning is provided, score it as an independent item (e.g., school the institution vs school of fish).
+- Different spelling/meaning counts as separate (e.g., paced vs paste; savor vs savory).
+- Different grammatical forms with meaning change count separately (e.g., final vs finally).
+- Plurals are accepted only if the singular wasn’t already provided; if both occur, score only the first.
+- Perseverations with no meaning change (sit/sat/sitting; take/took) count once.
+
+Return ONLY JSON with:
+- "processed_words": an array of strings that meet these rules.
+- "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Sally (proper name)", "Removed Sedona (place)").`,
+  fluencyT: `You are scoring a verbal fluency task for the letter "T".
+Given the raw list of spoken words, produce a processed list that follows these rules:
+- Words must start with T and be EXACTLY 4 letters.
+- No names of people, places, or numbers.
+- Words must be varied; no repetitions or simple inflections with no meaning change.
+- Exclude nonsense words (not in an English dictionary) and proper names.
+- If a second meaning is provided, score it as an independent item.
+- Different spelling/meaning counts as separate; different grammatical forms with meaning change count separately.
+- Plurals are accepted only if the singular wasn’t already provided; if both occur, score only the first.
+- Perseverations with no meaning change (sit/sat/sitting; take/took) count once.
+
+Return ONLY JSON with:
+- "processed_words": an array of strings that meet these rules.
+- "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Tara (proper name)").`,
+  sentence: `You are scoring the ECAS Executive - Sentence Completion task.
+
+For each item you receive the participant's first response (no self-corrections). Score using:
+- 2 points: completely unconnected / nonsensical to the sentence.
+- 1 point: related/associated or opposite meaning.
+- 0 points: exact or contextually appropriate word.
+
+Rules:
+- Take the first answer only.
+- If repeated from prior trials, still score but note the repetition.
+- Sentences can be ungrammatical; focus on semantic relatedness.
+
+Return JSON with:
+- items: array of {prompt (optional), response, score (0-2), rationale (short explanation of why the score was assigned)}
+- total: sum of scores`
+};
+
+const PROMPT_STORAGE_KEYS = {
+  story: "ecas.prompt.story",
+  fluency: "ecas.prompt.fluency",
+  fluencyT: "ecas.prompt.fluencyT",
+  sentence: "ecas.prompt.sentence"
+};
+
 const sentenceState = {
   index: 0,
   status: "pending",
@@ -266,12 +342,14 @@ const dom = {
   fluencyTScore: document.getElementById("fluency-t-score"),
   fluencyTLogBody: document.getElementById("fluency-t-log-body"),
   fluencyTScoreLLMBtn: document.getElementById("fluency-t-score-llm-btn"),
+  fluencyTAIResetBtn: document.getElementById("fluency-t-ai-reset-btn"),
   fluencyTProcessedNotes: document.getElementById("fluency-t-processed-notes"),
   fluencyTRawTotal: document.getElementById("fluency-t-raw-total"),
   fluencyTProcessedTotal: document.getElementById("fluency-t-processed-total"),
   fluencySectionScore: document.getElementById("fluency-section-score"),
   fluencyTSectionScore: document.getElementById("fluency-t-section-score"),
   fluencyScoreLLMBtn: document.getElementById("fluency-score-llm-btn"),
+  fluencyAIResetBtn: document.getElementById("fluency-ai-reset-btn"),
   fluencyScorerUrl: window.FLUENCY_SCORER_URL || "",
   fluencyTScorerUrl: window.FLUENCY_T_SCORER_URL || "",
   fluencyProcessedNotes: document.getElementById("fluency-processed-notes"),
@@ -501,6 +579,8 @@ init();
 
 function init() {
   bindControls();
+  setupTabs();
+  setupPromptEditor();
   loadItem(0);
   setupSpeechRecognition();
   setupComprehension();
@@ -636,6 +716,7 @@ function bindControls() {
   }
   if (dom.storyScoreDeterministicBtn) {
     dom.storyScoreDeterministicBtn.addEventListener("click", () => {
+      ensureStoryCaptureStopped();
       if (!storyState.entries.length) {
         alert("Capture the participant's story recall before scoring.");
         return;
@@ -657,8 +738,20 @@ function bindControls() {
   if (dom.fluencyScoreLLMBtn) {
     dom.fluencyScoreLLMBtn.addEventListener("click", scoreFluencyWithLLM);
   }
+  if (dom.fluencyAIResetBtn) {
+    dom.fluencyAIResetBtn.addEventListener("click", () => {
+      resetFluencyAISuggestions(fluencyState);
+      updateFluencyUI();
+    });
+  }
   if (dom.fluencyTScoreLLMBtn) {
     dom.fluencyTScoreLLMBtn.addEventListener("click", scoreFluencyTWithLLM);
+  }
+  if (dom.fluencyTAIResetBtn) {
+    dom.fluencyTAIResetBtn.addEventListener("click", () => {
+      resetFluencyAISuggestions(fluencyTState);
+      updateFluencyTUI();
+    });
   }
   if (dom.digitsStartBtn) {
     dom.digitsStartBtn.addEventListener("click", startDigitsListening);
@@ -769,6 +862,174 @@ function bindControls() {
   }
 }
 
+function setupTabs() {
+  const tabs = Array.from(document.querySelectorAll("[data-tab-target]"));
+  const panels = Array.from(document.querySelectorAll(".tab-panel"));
+  if (!tabs.length || !panels.length) {
+    return;
+  }
+  const activePanel = panels.find(panel => panel.classList.contains("active")) || panels[0];
+  if (activePanel) {
+    panels.forEach(panel => {
+      const isActive = panel === activePanel;
+      panel.classList.toggle("active", isActive);
+      panel.hidden = !isActive;
+    });
+    document.body.dataset.activeTab = activePanel.id || "";
+  }
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const targetId = tab.getAttribute("data-tab-target");
+      panels.forEach(panel => {
+        const isActive = panel.id === targetId;
+        panel.classList.toggle("active", isActive);
+        panel.hidden = !isActive;
+      });
+      tabs.forEach(btn => {
+        const isActive = btn === tab;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      document.body.dataset.activeTab = targetId || "";
+    });
+  });
+}
+
+function getPromptValue(kind) {
+  const key = PROMPT_STORAGE_KEYS[kind];
+  if (!key) {
+    return "";
+  }
+  const stored = localStorage.getItem(key);
+  if (stored !== null) {
+    return stored;
+  }
+  return PROMPT_DEFAULTS[kind] || "";
+}
+
+function savePromptValue(kind, value) {
+  const key = PROMPT_STORAGE_KEYS[kind];
+  if (!key) {
+    return;
+  }
+  localStorage.setItem(key, value);
+}
+
+function resetPromptValue(kind) {
+  const key = PROMPT_STORAGE_KEYS[kind];
+  if (!key) {
+    return;
+  }
+  localStorage.removeItem(key);
+}
+
+function setPromptStatus(el, message) {
+  if (!el) {
+    return;
+  }
+  el.textContent = message;
+  if (!message) {
+    return;
+  }
+  window.setTimeout(() => {
+    el.textContent = "";
+  }, 1500);
+}
+
+async function copyPromptText(text, statusEl) {
+  const value = text || "";
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+      setPromptStatus(statusEl, "Copied");
+      return;
+    }
+  } catch (err) {
+    console.warn("Clipboard copy failed", err);
+  }
+  const temp = document.createElement("textarea");
+  temp.value = value;
+  temp.setAttribute("readonly", "");
+  temp.style.position = "absolute";
+  temp.style.left = "-9999px";
+  document.body.appendChild(temp);
+  temp.select();
+  try {
+    document.execCommand("copy");
+    setPromptStatus(statusEl, "Copied");
+  } catch (err) {
+    console.warn("Fallback copy failed", err);
+    setPromptStatus(statusEl, "Copy failed");
+  } finally {
+    document.body.removeChild(temp);
+  }
+}
+
+function setupPromptEditor() {
+  const bindings = [
+    {
+      kind: "story",
+      inputId: "prompt-story",
+      saveId: "prompt-story-save",
+      revertId: "prompt-story-revert",
+      copyId: "prompt-story-copy",
+      statusId: "prompt-story-status"
+    },
+    {
+      kind: "fluency",
+      inputId: "prompt-fluency",
+      saveId: "prompt-fluency-save",
+      revertId: "prompt-fluency-revert",
+      copyId: "prompt-fluency-copy",
+      statusId: "prompt-fluency-status"
+    },
+    {
+      kind: "fluencyT",
+      inputId: "prompt-fluency-t",
+      saveId: "prompt-fluency-t-save",
+      revertId: "prompt-fluency-t-revert",
+      copyId: "prompt-fluency-t-copy",
+      statusId: "prompt-fluency-t-status"
+    },
+    {
+      kind: "sentence",
+      inputId: "prompt-sentence",
+      saveId: "prompt-sentence-save",
+      revertId: "prompt-sentence-revert",
+      copyId: "prompt-sentence-copy",
+      statusId: "prompt-sentence-status"
+    }
+  ];
+
+  bindings.forEach(binding => {
+    const input = document.getElementById(binding.inputId);
+    const saveBtn = document.getElementById(binding.saveId);
+    const revertBtn = binding.revertId ? document.getElementById(binding.revertId) : null;
+    const copyBtn = binding.copyId ? document.getElementById(binding.copyId) : null;
+    const status = document.getElementById(binding.statusId);
+    if (!input || !saveBtn) {
+      return;
+    }
+    input.value = getPromptValue(binding.kind);
+    saveBtn.addEventListener("click", () => {
+      savePromptValue(binding.kind, input.value || "");
+      setPromptStatus(status, "Saved");
+    });
+    if (revertBtn) {
+      revertBtn.addEventListener("click", () => {
+        resetPromptValue(binding.kind);
+        input.value = getPromptValue(binding.kind);
+        setPromptStatus(status, "Reverted");
+      });
+    }
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        copyPromptText(input.value || "", status);
+      });
+    }
+  });
+}
+
 function setupSentenceScoreEditing() {
   (dom.sentenceScoreCells || []).forEach(cell => {
     cell.addEventListener("dblclick", () => {
@@ -808,6 +1069,9 @@ function setupSentenceScoreEditing() {
 function setupSessionTimers() {
   document.querySelectorAll("section.stage-card").forEach(section => {
     const sectionId = section.getAttribute("id") || `section-${sessionTimers.size + 1}`;
+    if (sectionId === "agent-prompts-card" || sectionId === "overall-scores-card") {
+      return;
+    }
     if (sessionTimers.has(sectionId)) {
       return;
     }
@@ -906,7 +1170,8 @@ function setAIDemoMode(enabled) {
   const allowed = new Set(["story-card", "fluency-card", "fluency-t-card", "sentence-card"]);
   document.querySelectorAll("section.stage-card").forEach(section => {
     const id = section.getAttribute("id");
-    const shouldShow = !enabled || (id && allowed.has(id));
+    const inPromptTab = Boolean(section.closest("#tab-prompts"));
+    const shouldShow = !enabled || inPromptTab || (id && allowed.has(id));
     section.classList.toggle("ai-demo-hidden", !shouldShow);
   });
 }
@@ -2060,6 +2325,17 @@ function stopStoryListening() {
   renderStoryUI();
 }
 
+function ensureStoryCaptureStopped() {
+  if (storyState.status === "listening") {
+    stopStoryListening();
+    finalizeStoryCapture();
+    return;
+  }
+  if (storyState.status === "finishing") {
+    finalizeStoryCapture();
+  }
+}
+
 function finalizeStoryCapture() {
   storyState.status = "completed";
   storyState.timestamp = Date.now();
@@ -2098,6 +2374,7 @@ function getStoryTranscript() {
 }
 
 async function scoreStoryWithLLM() {
+  ensureStoryCaptureStopped();
   if (!storyState.entries.length) {
     alert("Capture the participant's story recall before scoring.");
     return;
@@ -2116,7 +2393,7 @@ async function scoreStoryWithLLM() {
     const response = await fetch(STORY_SCORER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript })
+      body: JSON.stringify({ transcript, prompt: getPromptValue("story") })
     });
     if (!response.ok) {
       const text = await response.text();
@@ -2157,7 +2434,7 @@ async function scoreFluencyWithLLM() {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ words })
+      body: JSON.stringify({ words, prompt: getPromptValue("fluency") })
     });
     if (!response.ok) {
       const text = await response.text();
@@ -2199,7 +2476,7 @@ async function scoreFluencyTWithLLM() {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ words })
+      body: JSON.stringify({ words, prompt: getPromptValue("fluencyT") })
     });
     if (!response.ok) {
       const text = await response.text();
@@ -3163,6 +3440,27 @@ function buildFluencyAIReview(state, data = {}) {
   state.processedNotes = rationales.slice();
 }
 
+function resetFluencyAISuggestions(state) {
+  const rawWords = state.entries.map(entry => entry.word);
+  const keepMask = Array.isArray(state.aiKeepMask) ? state.aiKeepMask : [];
+  if (!rawWords.length || keepMask.length !== rawWords.length) {
+    return;
+  }
+  const nextReview = rawWords.map((_, idx) => {
+    if (keepMask[idx]) {
+      return null;
+    }
+    const existing = Array.isArray(state.aiReview) ? state.aiReview[idx] : null;
+    return {
+      suggestion: "remove",
+      decision: "pending",
+      rationale: existing && existing.rationale ? existing.rationale : ""
+    };
+  });
+  state.aiReview = nextReview;
+  state.processedWords = rawWords.filter((_, idx) => keepMask[idx]);
+}
+
 function updateFluencyProcessedFromReview(state) {
   if (!Array.isArray(state.aiReview) || state.aiReview.length !== state.entries.length) {
     return;
@@ -3174,16 +3472,58 @@ function updateFluencyProcessedFromReview(state) {
       return;
     }
     const keepByAI = Array.isArray(state.aiKeepMask) ? state.aiKeepMask[idx] : false;
+    const review = state.aiReview[idx];
     if (keepByAI) {
+      if (review && review.decision === "accepted") {
+        return;
+      }
       reviewed.push(word);
       return;
     }
-    const review = state.aiReview[idx];
     if (review && review.decision === "rejected") {
       reviewed.push(word);
     }
   });
   state.processedWords = reviewed;
+}
+
+function isFluencyExcluded(state, idx) {
+  const keepByAI = Array.isArray(state.aiKeepMask) ? state.aiKeepMask[idx] : false;
+  const review = Array.isArray(state.aiReview) ? state.aiReview[idx] : null;
+  if (keepByAI) {
+    return Boolean(review && review.decision === "accepted");
+  }
+  if (review) {
+    return review.decision !== "rejected";
+  }
+  return false;
+}
+
+function toggleFluencySuggestion(state, idx) {
+  const keepByAI = Array.isArray(state.aiKeepMask) ? state.aiKeepMask[idx] : false;
+  if (keepByAI) {
+    if (!state.aiReview[idx]) {
+      state.aiReview[idx] = {
+        suggestion: "keep",
+        decision: "pending",
+        rationale: ""
+      };
+    }
+    const current = state.aiReview[idx].decision;
+    state.aiReview[idx].decision = current === "accepted" ? "pending" : "accepted";
+    updateFluencyProcessedFromReview(state);
+    return;
+  }
+  setFluencyReviewDecision(state, idx, "rejected");
+}
+
+function getFluencyScoredLabel(state, idx) {
+  const entry = state.entries[idx];
+  const word = entry ? entry.word || "" : "";
+  if (!word) {
+    return "";
+  }
+  return isFluencyExcluded(state, idx) ? "—" : word;
 }
 
 function setFluencyReviewDecision(state, index, decision) {
@@ -3609,7 +3949,7 @@ function updateFluencyUI() {
     const rawWords = fluencyState.entries.map(entry => entry.word);
     const processed = Array.isArray(fluencyState.processedWords) ? fluencyState.processedWords : [];
     const aiReview = Array.isArray(fluencyState.aiReview) ? fluencyState.aiReview : [];
-    const rowCount = Math.max(rawWords.length, processed.length);
+    const rowCount = rawWords.length;
     if (!rowCount) {
       logBody.innerHTML = '<tr class="empty-row"><td colspan="4">No responses yet.</td></tr>';
     } else {
@@ -3652,62 +3992,25 @@ function updateFluencyUI() {
         const aiTd = document.createElement("td");
         aiTd.className = "ai-cell";
         const review = aiReview.length === rawWords.length ? aiReview[i] : null;
-        if (review) {
-          const pill = document.createElement("span");
-          pill.className = "ai-pill remove";
-          pill.textContent = `Remove "${rawWords[i] || ""}"?`;
-          const infoWrap = document.createElement("span");
-          infoWrap.className = "ai-pop";
-          const pop = document.createElement("span");
-          pop.className = "ai-popover";
-          pop.textContent = review.rationale || "No rationale provided.";
-          pill.addEventListener("click", event => {
-            event.stopPropagation();
-            pop.classList.toggle("show");
-          });
-          infoWrap.append(pill, pop);
-
-          const reviewWrap = document.createElement("span");
-          reviewWrap.className = "review-actions";
-          const acceptBtn = document.createElement("button");
-          acceptBtn.type = "button";
-          acceptBtn.className = "icon-btn accept";
-          acceptBtn.textContent = "✓";
-          if (review.decision === "accepted") {
-            acceptBtn.classList.add("selected");
-          }
-          acceptBtn.addEventListener("click", () => {
-            setFluencyReviewDecision(fluencyState, i, "accepted");
+        const keepByAI = Array.isArray(fluencyState.aiKeepMask) ? fluencyState.aiKeepMask[i] : false;
+        if (review || keepByAI) {
+          const toggleBtn = document.createElement("button");
+          toggleBtn.type = "button";
+          const isKeep = !isFluencyExcluded(fluencyState, i);
+          toggleBtn.className = `ai-toggle ai-pill ${isKeep ? "keep" : "remove"}`;
+          toggleBtn.textContent = isKeep ? "Keep" : "Exclude";
+          toggleBtn.title =
+            (review && review.rationale) || (keepByAI ? "AI suggested keep." : "No rationale provided.");
+          toggleBtn.addEventListener("click", () => {
+            toggleFluencySuggestion(fluencyState, i);
             updateFluencyUI();
           });
-          const rejectBtn = document.createElement("button");
-          rejectBtn.type = "button";
-          rejectBtn.className = "icon-btn reject";
-          rejectBtn.textContent = "✕";
-          if (review.decision === "rejected") {
-            rejectBtn.classList.add("selected");
-          }
-          rejectBtn.addEventListener("click", () => {
-            setFluencyReviewDecision(fluencyState, i, "rejected");
-            updateFluencyUI();
-          });
-          reviewWrap.append(acceptBtn, rejectBtn);
-          aiTd.append(infoWrap, reviewWrap);
+          aiTd.append(toggleBtn);
         } else {
           aiTd.textContent = "—";
         }
         const scoredTd = document.createElement("td");
-        scoredTd.textContent = processed[i] || "";
-        if (processed[i]) {
-          attachFluencyDragHandlers(
-            scoredTd,
-            { scope: "fluency", listType: "scored", index: i },
-            (fromIndex, toIndex) => {
-              applyFluencyReorder(fluencyState, "scored", fromIndex, toIndex);
-              updateFluencyUI();
-            }
-          );
-        }
+        scoredTd.textContent = getFluencyScoredLabel(fluencyState, i);
         tr.append(num, rawTd, scoredTd, aiTd);
         frag.appendChild(tr);
       }
@@ -3851,7 +4154,7 @@ function updateFluencyTUI() {
     const rawWords = fluencyTState.entries.map(entry => entry.word);
     const processed = Array.isArray(fluencyTState.processedWords) ? fluencyTState.processedWords : [];
     const aiReview = Array.isArray(fluencyTState.aiReview) ? fluencyTState.aiReview : [];
-    const rowCount = Math.max(rawWords.length, processed.length);
+    const rowCount = rawWords.length;
     if (!rowCount) {
       dom.fluencyTLogBody.innerHTML = '<tr class="empty-row"><td colspan="4">No responses yet.</td></tr>';
     } else {
@@ -3896,62 +4199,25 @@ function updateFluencyTUI() {
         const aiTd = document.createElement("td");
         aiTd.className = "ai-cell";
         const review = aiReview.length === rawWords.length ? aiReview[i] : null;
-        if (review) {
-          const pill = document.createElement("span");
-          pill.className = "ai-pill remove";
-          pill.textContent = `Remove "${rawWords[i] || ""}"?`;
-          const infoWrap = document.createElement("span");
-          infoWrap.className = "ai-pop";
-          const pop = document.createElement("span");
-          pop.className = "ai-popover";
-          pop.textContent = review.rationale || "No rationale provided.";
-          pill.addEventListener("click", event => {
-            event.stopPropagation();
-            pop.classList.toggle("show");
-          });
-          infoWrap.append(pill, pop);
-
-          const reviewWrap = document.createElement("span");
-          reviewWrap.className = "review-actions";
-          const acceptBtn = document.createElement("button");
-          acceptBtn.type = "button";
-          acceptBtn.className = "icon-btn accept";
-          acceptBtn.textContent = "✓";
-          if (review.decision === "accepted") {
-            acceptBtn.classList.add("selected");
-          }
-          acceptBtn.addEventListener("click", () => {
-            setFluencyReviewDecision(fluencyTState, i, "accepted");
+        const keepByAI = Array.isArray(fluencyTState.aiKeepMask) ? fluencyTState.aiKeepMask[i] : false;
+        if (review || keepByAI) {
+          const toggleBtn = document.createElement("button");
+          toggleBtn.type = "button";
+          const isKeep = !isFluencyExcluded(fluencyTState, i);
+          toggleBtn.className = `ai-toggle ai-pill ${isKeep ? "keep" : "remove"}`;
+          toggleBtn.textContent = isKeep ? "Keep" : "Exclude";
+          toggleBtn.title =
+            (review && review.rationale) || (keepByAI ? "AI suggested keep." : "No rationale provided.");
+          toggleBtn.addEventListener("click", () => {
+            toggleFluencySuggestion(fluencyTState, i);
             updateFluencyTUI();
           });
-          const rejectBtn = document.createElement("button");
-          rejectBtn.type = "button";
-          rejectBtn.className = "icon-btn reject";
-          rejectBtn.textContent = "✕";
-          if (review.decision === "rejected") {
-            rejectBtn.classList.add("selected");
-          }
-          rejectBtn.addEventListener("click", () => {
-            setFluencyReviewDecision(fluencyTState, i, "rejected");
-            updateFluencyTUI();
-          });
-          reviewWrap.append(acceptBtn, rejectBtn);
-          aiTd.append(infoWrap, reviewWrap);
+          aiTd.append(toggleBtn);
         } else {
           aiTd.textContent = "—";
         }
         const scoredTd = document.createElement("td");
-        scoredTd.textContent = processed[i] || "";
-        if (processed[i]) {
-          attachFluencyDragHandlers(
-            scoredTd,
-            { scope: "fluencyT", listType: "scored", index: i },
-            (fromIndex, toIndex) => {
-              applyFluencyReorder(fluencyTState, "scored", fromIndex, toIndex);
-              updateFluencyTUI();
-            }
-          );
-        }
+        scoredTd.textContent = getFluencyScoredLabel(fluencyTState, i);
         tr.append(num, rawTd, scoredTd, aiTd);
         frag.appendChild(tr);
       }
@@ -4934,7 +5200,7 @@ async function scoreSentencesWithLLM() {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ responses })
+      body: JSON.stringify({ responses, prompt: getPromptValue("sentence") })
     });
     if (!response.ok) {
       const text = await response.text();

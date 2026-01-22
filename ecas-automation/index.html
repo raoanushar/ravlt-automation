@@ -35,6 +35,16 @@
         Your browser does not support the Web Speech API. Use Google Chrome (desktop) and allow microphone access to capture responses.
       </div>
 
+      <div class="tab-bar" role="tablist" aria-label="ECAS sections">
+        <button class="tab-btn active" type="button" data-tab-target="tab-assessment" role="tab" aria-selected="true">
+          Assessment
+        </button>
+        <button class="tab-btn" type="button" data-tab-target="tab-prompts" role="tab" aria-selected="false">
+          Agent Prompts
+        </button>
+      </div>
+
+      <div class="tab-panel active" id="tab-assessment" role="tabpanel">
       <main class="content-grid">
         <section class="stage-card">
           <div class="stage-header">
@@ -482,7 +492,20 @@
                 <th>#</th>
                 <th>Raw Response List</th>
                 <th id="fluency-scored-col">Scored Response List</th>
-                <th>AI Co-pilot Suggestions</th>
+                <th>
+                  <span class="ai-header">
+                    <span>AI Co-pilot Suggestions</span>
+                    <button
+                      class="icon-btn small ai-reset-btn"
+                      id="fluency-ai-reset-btn"
+                      type="button"
+                      title="Revert to AI suggestions"
+                      aria-label="Revert to AI suggestions"
+                    >
+                      ⟲
+                    </button>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody id="fluency-log-body">
@@ -768,7 +791,20 @@
                 <th>#</th>
                 <th>Raw Response List</th>
                 <th id="fluency-t-scored-col">Scored Response List</th>
-                <th>AI Co-pilot Suggestions</th>
+                <th>
+                  <span class="ai-header">
+                    <span>AI Co-pilot Suggestions</span>
+                    <button
+                      class="icon-btn small ai-reset-btn"
+                      id="fluency-t-ai-reset-btn"
+                      type="button"
+                      title="Revert to AI suggestions"
+                      aria-label="Revert to AI suggestions"
+                    >
+                      ⟲
+                    </button>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody id="fluency-t-log-body">
@@ -1128,10 +1164,9 @@
           </table>
         </div>
       </section>
-    </div>
 
     <hr />
-    <section class="stage-card">
+    <section class="stage-card" id="overall-scores-card">
       <div class="stage-header">
         <div>
           <p class="eyebrow">Scores</p>
@@ -1231,6 +1266,89 @@
         </tbody>
       </table>
     </section>
+      </div>
+
+      <div class="tab-panel" id="tab-prompts" role="tabpanel">
+        <section class="stage-card" id="agent-prompts-card">
+          <div class="stage-header">
+            <div>
+              <p class="eyebrow">Agent Prompts</p>
+              <h2>Agent Prompt Editor</h2>
+              <p class="overview">Make edits to agent prompts locally to test agent performance. Changes only stored locally.</p>
+            </div>
+          </div>
+
+          <div class="prompt-editor-grid">
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <h3>Immediate Recall Story Scoring Agent</h3>
+                <div class="prompt-actions">
+                  <button class="icon-btn small prompt-revert-btn" id="prompt-story-revert" type="button" title="Revert to default">
+                    ⟲
+                  </button>
+                  <button class="icon-btn small prompt-copy-btn" id="prompt-story-copy" type="button" title="Copy" aria-label="Copy">
+                    ⧉
+                  </button>
+                  <button class="ghost" id="prompt-story-save" type="button">Save</button>
+                  <span class="muted prompt-status" id="prompt-story-status"></span>
+                </div>
+              </div>
+              <textarea id="prompt-story" rows="12"></textarea>
+            </div>
+
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <h3>Fluency S Scoring Agent</h3>
+                <div class="prompt-actions">
+                  <button class="icon-btn small prompt-revert-btn" id="prompt-fluency-revert" type="button" title="Revert to default">
+                    ⟲
+                  </button>
+                  <button class="icon-btn small prompt-copy-btn" id="prompt-fluency-copy" type="button" title="Copy" aria-label="Copy">
+                    ⧉
+                  </button>
+                  <button class="ghost" id="prompt-fluency-save" type="button">Save</button>
+                  <span class="muted prompt-status" id="prompt-fluency-status"></span>
+                </div>
+              </div>
+              <textarea id="prompt-fluency" rows="12"></textarea>
+            </div>
+
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <h3>Fluency T Scoring Agent</h3>
+                <div class="prompt-actions">
+                  <button class="icon-btn small prompt-revert-btn" id="prompt-fluency-t-revert" type="button" title="Revert to default">
+                    ⟲
+                  </button>
+                  <button class="icon-btn small prompt-copy-btn" id="prompt-fluency-t-copy" type="button" title="Copy" aria-label="Copy">
+                    ⧉
+                  </button>
+                  <button class="ghost" id="prompt-fluency-t-save" type="button">Save</button>
+                  <span class="muted prompt-status" id="prompt-fluency-t-status"></span>
+                </div>
+              </div>
+              <textarea id="prompt-fluency-t" rows="12"></textarea>
+            </div>
+
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <h3>Sentence Completion Scoring Agent</h3>
+                <div class="prompt-actions">
+                  <button class="icon-btn small prompt-revert-btn" id="prompt-sentence-revert" type="button" title="Revert to default">
+                    ⟲
+                  </button>
+                  <button class="icon-btn small prompt-copy-btn" id="prompt-sentence-copy" type="button" title="Copy" aria-label="Copy">
+                    ⧉
+                  </button>
+                  <button class="ghost" id="prompt-sentence-save" type="button">Save</button>
+                  <span class="muted prompt-status" id="prompt-sentence-status"></span>
+                </div>
+              </div>
+              <textarea id="prompt-sentence" rows="12"></textarea>
+            </div>
+          </div>
+        </section>
+      </div>
 
     <script type="module" src="app.js"></script>
   </body>

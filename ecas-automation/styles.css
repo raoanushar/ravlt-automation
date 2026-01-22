@@ -30,7 +30,8 @@ body {
   margin: 0 auto;
 }
 
-.app > .stage-card + .stage-card {
+.app > .stage-card + .stage-card,
+.tab-panel .stage-card + .stage-card {
   margin-top: 1.75rem;
 }
 
@@ -183,6 +184,7 @@ header h1 {
 .content-grid {
   display: grid;
   grid-template-columns: 1fr;
+  gap: 1.75rem;
 }
 
 .stage-card {
@@ -642,6 +644,13 @@ th {
   cursor: pointer;
 }
 
+.icon-btn.small {
+  width: 22px;
+  height: 22px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+}
+
 .icon-btn.accept {
   color: #15803d;
 }
@@ -682,11 +691,111 @@ th {
   color: #b91c1c;
 }
 
+.ai-toggle {
+  border: none;
+  font: inherit;
+  line-height: 1;
+}
+
 .ai-pop {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.ai-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.tab-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: #0f172a;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.tab-panel[hidden] {
+  display: none !important;
+}
+
+body[data-active-tab="tab-prompts"] #tab-assessment {
+  display: none !important;
+}
+
+body[data-active-tab="tab-assessment"] #tab-prompts {
+  display: none !important;
+}
+
+.prompt-editor-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.prompt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  width: 100%;
+}
+
+.prompt-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.prompt-editor textarea {
+  width: 100%;
+  min-height: 520px;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.prompt-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.prompt-status {
+  min-width: 3rem;
 }
 
 .raw-cell {
