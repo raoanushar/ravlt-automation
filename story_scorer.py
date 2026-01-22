@@ -107,7 +107,7 @@ They earn 1 point for each criterion they satisfy or mention:
 6. If they mention "Robert Webber" → A mention of “Robert” and/or “Webber” will suffice to earn the point.
 7. If they mention the "Woodland project" → Mention of “woodland” + a project synonym like “plan”, “initiative”, “program”.
 8. If they mention "Impressed and especially proud" → Any positive emotional response (e.g., “pleased”) would suffice to earn the point.
-9. If they recall the number "Seventeen" → Only “Seventeen”.
+9. If they recall the number "Seventeen" → Can be either the raw number 17 or word version "seventeen" etc..
 10. If they recall there were "Children" → “Children”, “kids”, or similar term.
 
 Return ONLY the JSON with yes/no values for each field.

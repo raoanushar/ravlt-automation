@@ -161,12 +161,12 @@ They earn 1 point for each criterion they satisfy or mention:
 1. If they mention the word "Sunday" → Only the exact word “Sunday” is accepted.
 2. If they mention the "Annual Park Cleanup" → Accept: “Annual cleanup”, “garbage cleanup”, “park cleanup”, “annual trash cleanup”.
 3. If they mention "Marigold Woods" → Any part of “Marigold Woods” verbatim, or a similar place such as “forest”, “park”.
-4. If they recall the number "Forty two" → Only “Forty-two”.
+4. If they recall the number "Forty two" → Can be either the raw number 42 or word version "forty two" etc.
 5. If they mention "Bicycles and shopping carts" → Must mention BOTH items; similar terms like “carts” or “trolley” are allowed.
 6. If they mention "Robert Webber" → A mention of “Robert” and/or “Webber” will suffice to earn the point.
 7. If they mention the "Woodland project" → Mention of “woodland” + a project synonym like “plan”, “initiative”, “program”.
 8. If they mention "Impressed and especially proud" → Any positive emotional response (e.g., “pleased”) would suffice to earn the point.
-9. If they recall the number "Seventeen" → Only “Seventeen”.
+9. If they recall the number "Seventeen" → Can be either the raw number 17 or word version "seventeen" etc..
 10. If they recall there were "Children" → “Children”, “kids”, or similar term.
 
 Return ONLY the JSON with yes/no values for each field.`,
@@ -215,12 +215,16 @@ Return JSON with:
 - total: sum of scores`
 };
 
+const PROMPT_DEFAULTS_VERSION = "2025-02-12";
+
 const PROMPT_STORAGE_KEYS = {
   story: "ecas.prompt.story",
   fluency: "ecas.prompt.fluency",
   fluencyT: "ecas.prompt.fluencyT",
   sentence: "ecas.prompt.sentence"
 };
+
+const PROMPT_VERSION_KEY = "ecas.prompt.defaultsVersion";
 
 const sentenceState = {
   index: 0,
@@ -966,6 +970,7 @@ async function copyPromptText(text, statusEl) {
 }
 
 function setupPromptEditor() {
+  ensurePromptDefaultsCurrent();
   const bindings = [
     {
       kind: "story",
@@ -1028,6 +1033,18 @@ function setupPromptEditor() {
       });
     }
   });
+}
+
+function ensurePromptDefaultsCurrent() {
+  const currentVersion = localStorage.getItem(PROMPT_VERSION_KEY);
+  if (currentVersion === PROMPT_DEFAULTS_VERSION) {
+    return;
+  }
+  Object.entries(PROMPT_STORAGE_KEYS).forEach(([kind, key]) => {
+    const defaultValue = PROMPT_DEFAULTS[kind] || "";
+    localStorage.setItem(key, defaultValue);
+  });
+  localStorage.setItem(PROMPT_VERSION_KEY, PROMPT_DEFAULTS_VERSION);
 }
 
 function setupSentenceScoreEditing() {
