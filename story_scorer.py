@@ -6,6 +6,7 @@ Run with:
 The frontend should point window.STORY_SCORER_URL to http://127.0.0.1:5000/score-story
 """
 
+import json
 import logging
 import os
 from flask import Flask, request, jsonify, make_response, send_from_directory
@@ -36,7 +37,7 @@ class StoryScore(BaseModel):
 
 class FluencyScore(BaseModel):
     processed_words: list[str]
-    rationale: list[str]
+    rationale: dict[str, str]
 
 
 class SentenceItemScore(BaseModel):
@@ -83,7 +84,9 @@ Given the raw list of spoken words, produce a processed list that follows these 
 
 Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.
-- "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Tara (proper name)").
+- "rationale": a dictionary mapping EACH removed word to a reason. Use only these reasons:
+  "proper name", "number", "place", "nonsense word", "repeat", "inflection", "does not start with T", "wrong length".
+  If no words are removed, return an empty object.
 """
 
 
@@ -127,7 +130,9 @@ Given the raw list of spoken words, produce a processed list that follows these 
 
 Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.
-- "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Sally (proper name)", "Removed Sedona (place)").
+- "rationale": a dictionary mapping EACH removed word to a reason. Use only these reasons:
+  "proper name", "number", "place", "nonsense word", "repeat", "inflection", "does not start with S".
+  If no words are removed, return an empty object.
 """
 
 def build_story_prompt(transcript: str, override: str | None) -> str:
@@ -223,16 +228,22 @@ def score_fluency():
     prompt_text = (override or "").strip() or FLUENCY_PROMPT
     logging.info("Fluency scoring request. Raw words count: %s", len(words))
     try:
-        completion = client.chat.completions.parse(
+        completion = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You process fluency word lists following strict scoring rules."},
                 {"role": "user", "content": f"{prompt_text}\n\nRaw words:\n{words}"},
             ],
-            response_format=FluencyScore,
+            response_format={"type": "json_object"},
         )
-        parsed: FluencyScore = completion.choices[0].message.parsed
-        payload = parsed.model_dump()
+        content = completion.choices[0].message.content or "{}"
+        parsed = json.loads(content)
+        processed_words = parsed.get("processed_words", [])
+        rationale = parsed.get("rationale", {})
+        payload = {
+            "processed_words": processed_words if isinstance(processed_words, list) else [],
+            "rationale": rationale if isinstance(rationale, dict) else {},
+        }
         logging.info("Fluency OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("Fluency OpenAI call failed")
@@ -269,16 +280,22 @@ def score_fluency_t():
     prompt_text = (override or "").strip() or FLUENCY_T_PROMPT
     logging.info("Fluency-T scoring request. Raw words count: %s", len(words))
     try:
-        completion = client.chat.completions.parse(
+        completion = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You process fluency word lists following strict scoring rules."},
                 {"role": "user", "content": f"{prompt_text}\n\nRaw words:\n{words}"},
             ],
-            response_format=FluencyScore,
+            response_format={"type": "json_object"},
         )
-        parsed: FluencyScore = completion.choices[0].message.parsed
-        payload = parsed.model_dump()
+        content = completion.choices[0].message.content or "{}"
+        parsed = json.loads(content)
+        processed_words = parsed.get("processed_words", [])
+        rationale = parsed.get("rationale", {})
+        payload = {
+            "processed_words": processed_words if isinstance(processed_words, list) else [],
+            "rationale": rationale if isinstance(rationale, dict) else {},
+        }
         logging.info("Fluency-T OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("Fluency-T OpenAI call failed")

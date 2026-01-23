@@ -492,6 +492,11 @@ td {
 table.fluency-table th,
 table.fluency-table td {
   white-space: nowrap;
+  border-bottom: none;
+}
+
+table.fluency-table tr {
+  border-bottom: 1px solid var(--border);
 }
 
 th {
@@ -810,6 +815,12 @@ body[data-active-tab="tab-assessment"] #tab-prompts {
   align-items: center;
   flex-wrap: nowrap;
   gap: 0.4rem;
+}
+
+.ai-rationale {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .review-actions {

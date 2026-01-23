@@ -183,7 +183,9 @@ Given the raw list of spoken words, produce a processed list that follows these 
 
 Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.
-- "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Sally (proper name)", "Removed Sedona (place)").`,
+- "rationale": a dictionary mapping EACH removed word to a reason. Use only these reasons:
+  "proper name", "number", "place", "nonsense word", "repeat", "inflection", "does not start with S".
+  If no words are removed, return an empty object.`,
   fluencyT: `You are scoring a verbal fluency task for the letter "T".
 Given the raw list of spoken words, produce a processed list that follows these rules:
 - Words must start with T and be EXACTLY 4 letters.
@@ -197,7 +199,9 @@ Given the raw list of spoken words, produce a processed list that follows these 
 
 Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.
-- "rationale": an array of short strings explaining any removals/decisions (e.g., "Removed Tara (proper name)").`,
+- "rationale": a dictionary mapping EACH removed word to a reason. Use only these reasons:
+  "proper name", "number", "place", "nonsense word", "repeat", "inflection", "does not start with T", "wrong length".
+  If no words are removed, return an empty object.`,
   sentence: `You are scoring the ECAS Executive - Sentence Completion task.
 
 For each item you receive the participant's first response (no self-corrections). Score using:
@@ -215,7 +219,7 @@ Return JSON with:
 - total: sum of scores`
 };
 
-const PROMPT_DEFAULTS_VERSION = "2025-02-12";
+const PROMPT_DEFAULTS_VERSION = "2025-02-13";
 
 const PROMPT_STORAGE_KEYS = {
   story: "ecas.prompt.story",
@@ -3418,16 +3422,16 @@ function resetFluencyAIReview(state) {
 function buildFluencyAIReview(state, data = {}) {
   const rawWords = state.entries.map(entry => entry.word);
   const processedWords = Array.isArray(data.processed_words) ? data.processed_words : [];
-  const rationales = Array.isArray(data.rationale) ? data.rationale : [];
+  const rationales = data.rationale || {};
   const processedCanonical = processedWords.map(word => canonicalize(word)).filter(Boolean);
   const processedSet = new Set(processedCanonical);
-  const rationaleByProcessed = new Map();
+  const rationaleByRemoved = new Map();
 
-  if (rationales.length === processedWords.length) {
-    processedWords.forEach((word, idx) => {
+  if (rationales && typeof rationales === "object" && !Array.isArray(rationales)) {
+    Object.entries(rationales).forEach(([word, reason]) => {
       const key = canonicalize(word);
-      if (key && !rationaleByProcessed.has(key)) {
-        rationaleByProcessed.set(key, rationales[idx] || "");
+      if (key && !rationaleByRemoved.has(key)) {
+        rationaleByRemoved.set(key, String(reason || ""));
       }
     });
   }
@@ -3442,10 +3446,12 @@ function buildFluencyAIReview(state, data = {}) {
     }
     const canonical = canonicalize(word);
     let rationale = "";
-    if (rationales.length === rawWords.length) {
+    if (Array.isArray(rationales) && rationales.length === rawWords.length) {
       rationale = rationales[idx] || "";
-    } else if (rationales.length === processedWords.length) {
-      rationale = rationaleByProcessed.get(canonical) || "";
+    } else if (Array.isArray(rationales) && rationales.length === processedWords.length) {
+      rationale = rationales[idx] || "";
+    } else {
+      rationale = rationaleByRemoved.get(canonical) || "";
     }
     return {
       suggestion: "remove",
@@ -3454,7 +3460,7 @@ function buildFluencyAIReview(state, data = {}) {
     };
   });
   state.processedWords = rawWords.filter((_, idx) => state.aiKeepMask[idx]);
-  state.processedNotes = rationales.slice();
+  state.processedNotes = Array.isArray(rationales) ? rationales.slice() : [];
 }
 
 function resetFluencyAISuggestions(state) {
@@ -3471,7 +3477,8 @@ function resetFluencyAISuggestions(state) {
     return {
       suggestion: "remove",
       decision: "pending",
-      rationale: existing && existing.rationale ? existing.rationale : ""
+      rationale: existing && existing.rationale ? existing.rationale : "",
+      manualNote: ""
     };
   });
   state.aiReview = nextReview;
@@ -3528,10 +3535,52 @@ function toggleFluencySuggestion(state, idx) {
     }
     const current = state.aiReview[idx].decision;
     state.aiReview[idx].decision = current === "accepted" ? "pending" : "accepted";
+    if (state.aiReview[idx].decision === "pending") {
+      state.aiReview[idx].manualNote = "";
+    }
     updateFluencyProcessedFromReview(state);
     return;
   }
   setFluencyReviewDecision(state, idx, "rejected");
+  const review = state.aiReview && state.aiReview[idx];
+  if (review && review.decision === "rejected") {
+    review.manualNote = "";
+  }
+}
+
+function setFluencyManualNote(state, idx, note) {
+  if (!Array.isArray(state.aiReview)) {
+    state.aiReview = [];
+  }
+  if (!state.aiReview[idx]) {
+    state.aiReview[idx] = {
+      suggestion: "keep",
+      decision: "pending",
+      rationale: ""
+    };
+  }
+  state.aiReview[idx].manualNote = note;
+}
+
+function normalizeManualNote(value = "") {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.replace(/^(exclude|keep)\s*-\s*/i, "");
+}
+
+function getSuggestionNote(review) {
+  if (!review) {
+    return "";
+  }
+  if (review.manualNote) {
+    return review.manualNote.trim();
+  }
+  if (review.rationale) {
+    return review.rationale.trim();
+  }
+  return "";
 }
 
 function getFluencyScoredLabel(state, idx) {
@@ -4014,14 +4063,48 @@ function updateFluencyUI() {
           const toggleBtn = document.createElement("button");
           toggleBtn.type = "button";
           const isKeep = !isFluencyExcluded(fluencyState, i);
+          const note = getSuggestionNote(review);
+          let clickTimer = null;
           toggleBtn.className = `ai-toggle ai-pill ${isKeep ? "keep" : "remove"}`;
-          toggleBtn.textContent = isKeep ? "Keep" : "Exclude";
+          const labelText = isKeep ? "Keep" : note ? `Exclude - ${note}` : "Exclude";
+          const labelSpan = document.createElement("span");
+          labelSpan.textContent = labelText;
           toggleBtn.title =
             (review && review.rationale) || (keepByAI ? "AI suggested keep." : "No rationale provided.");
-          toggleBtn.addEventListener("click", () => {
-            toggleFluencySuggestion(fluencyState, i);
-            updateFluencyUI();
+          toggleBtn.addEventListener("click", event => {
+            if (toggleBtn.dataset.ignoreClick === "true") {
+              return;
+            }
+            if (clickTimer) {
+              window.clearTimeout(clickTimer);
+            }
+            clickTimer = window.setTimeout(() => {
+              toggleFluencySuggestion(fluencyState, i);
+              updateFluencyUI();
+              clickTimer = null;
+            }, 220);
           });
+          const handleEdit = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (clickTimer) {
+              window.clearTimeout(clickTimer);
+              clickTimer = null;
+            }
+            toggleBtn.dataset.ignoreClick = "true";
+            window.setTimeout(() => {
+              delete toggleBtn.dataset.ignoreClick;
+            }, 250);
+            const currentNote = note;
+            startInlineEdit(labelSpan, currentNote, value => {
+              const cleaned = normalizeManualNote(value);
+              setFluencyManualNote(fluencyState, i, cleaned);
+              updateFluencyUI();
+            });
+          };
+          labelSpan.addEventListener("dblclick", handleEdit);
+          aiTd.addEventListener("dblclick", handleEdit);
+          toggleBtn.append(labelSpan);
           aiTd.append(toggleBtn);
         } else {
           aiTd.textContent = "—";
@@ -4221,14 +4304,48 @@ function updateFluencyTUI() {
           const toggleBtn = document.createElement("button");
           toggleBtn.type = "button";
           const isKeep = !isFluencyExcluded(fluencyTState, i);
+          const note = getSuggestionNote(review);
+          let clickTimer = null;
           toggleBtn.className = `ai-toggle ai-pill ${isKeep ? "keep" : "remove"}`;
-          toggleBtn.textContent = isKeep ? "Keep" : "Exclude";
+          const labelText = isKeep ? "Keep" : note ? `Exclude - ${note}` : "Exclude";
+          const labelSpan = document.createElement("span");
+          labelSpan.textContent = labelText;
           toggleBtn.title =
             (review && review.rationale) || (keepByAI ? "AI suggested keep." : "No rationale provided.");
-          toggleBtn.addEventListener("click", () => {
-            toggleFluencySuggestion(fluencyTState, i);
-            updateFluencyTUI();
+          toggleBtn.addEventListener("click", event => {
+            if (toggleBtn.dataset.ignoreClick === "true") {
+              return;
+            }
+            if (clickTimer) {
+              window.clearTimeout(clickTimer);
+            }
+            clickTimer = window.setTimeout(() => {
+              toggleFluencySuggestion(fluencyTState, i);
+              updateFluencyTUI();
+              clickTimer = null;
+            }, 220);
           });
+          const handleEdit = event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (clickTimer) {
+              window.clearTimeout(clickTimer);
+              clickTimer = null;
+            }
+            toggleBtn.dataset.ignoreClick = "true";
+            window.setTimeout(() => {
+              delete toggleBtn.dataset.ignoreClick;
+            }, 250);
+            const currentNote = note;
+            startInlineEdit(labelSpan, currentNote, value => {
+              const cleaned = normalizeManualNote(value);
+              setFluencyManualNote(fluencyTState, i, cleaned);
+              updateFluencyTUI();
+            });
+          };
+          labelSpan.addEventListener("dblclick", handleEdit);
+          aiTd.addEventListener("dblclick", handleEdit);
+          toggleBtn.append(labelSpan);
           aiTd.append(toggleBtn);
         } else {
           aiTd.textContent = "—";
