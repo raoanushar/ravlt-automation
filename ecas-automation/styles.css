@@ -39,6 +39,10 @@ body {
   margin-top: 1.75rem;
 }
 
+#session-card {
+  margin-bottom: 1.75rem;
+}
+
 .timer-block {
   display: flex;
   justify-content: space-between;
@@ -208,6 +212,49 @@ header h1 {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.session-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.session-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.session-field input {
+  width: 100%;
+}
+
+.session-id-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.session-actions code {
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+}
+
+.session-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
 }
 
 .session-duration {
@@ -513,6 +560,10 @@ th {
   font-weight: 600;
 }
 
+.match-pill.clickable {
+  cursor: pointer;
+}
+
 .match-pill.success {
   background: #dcfce7;
   color: #15803d;
@@ -525,6 +576,19 @@ th {
 
 .match-pill.miss {
   background: #fee2e2;
+  color: #b91c1c;
+}
+
+.pill-explainer {
+  font-style: italic;
+  font-weight: 600;
+}
+
+.pill-explainer.success {
+  color: #15803d;
+}
+
+.pill-explainer.miss {
   color: #b91c1c;
 }
 
@@ -543,6 +607,74 @@ th {
   border-radius: 10px;
   border: 1px solid var(--border);
   font: inherit;
+}
+
+.delayed-retention {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.retention-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.retention-equation {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  width: 220px;
+  font-weight: 600;
+}
+
+.retention-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  margin: 0.2rem 0;
+}
+
+.retention-formula {
+  font-weight: 600;
+}
+
+.retention-value {
+  margin-top: 0.25rem;
+}
+
+.retention-score {
+  color: #0f172a;
+  font-weight: 700;
+  text-align: right;
+}
+
+.tf-option {
+  min-width: 40px;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.tf-option.selected {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.section-disabled .log {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(1);
+}
+
+.section-disabled .log .match-pill {
+  opacity: 1;
+  filter: none;
 }
 
 .fluency-lists {
@@ -801,6 +933,96 @@ body[data-active-tab="tab-assessment"] #tab-prompts {
 
 .prompt-status {
   min-width: 3rem;
+}
+
+.fluency-readout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.fluency-read-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.read-timer {
+  font-weight: 700;
+  min-width: 60px;
+}
+
+.fluency-vfi .result-title {
+  font-size: 1.6rem;
+  margin: 0.2rem 0;
+}
+
+@media (max-width: 720px) {
+  .fluency-readout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.social-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem auto;
+  max-width: 520px;
+}
+
+.social-b-stage {
+  position: relative;
+  margin: 1rem auto;
+  max-width: 520px;
+}
+
+.social-b-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.social-b-face {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 90px;
+  height: 90px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #fff;
+  padding: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
+  pointer-events: none;
+  object-fit: contain;
+}
+
+.social-option {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.social-option img {
+  width: 100%;
+  height: 120px;
+  object-fit: contain;
+  display: block;
+}
+
+.social-option.selected {
+  border-color: #2563eb;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.18);
+  transform: translateY(-2px);
 }
 
 .raw-cell {

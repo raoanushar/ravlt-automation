@@ -10,7 +10,10 @@
       window.FLUENCY_SCORER_URL = window.FLUENCY_SCORER_URL || "/score-fluency";
       window.FLUENCY_T_SCORER_URL = window.FLUENCY_T_SCORER_URL || "/score-fluency-t";
       window.SENTENCE_SCORER_URL = window.SENTENCE_SCORER_URL || "/score-sentences";
+      window.SUPABASE_URL = "https://lhtefqadtgmjujmbglvs.supabase.co";
+      window.SUPABASE_ANON_KEY = "sb_publishable_E5npYzYGjdWduXLBRZu5Kw_J4dgvH5H";
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <div class="app">
@@ -45,6 +48,50 @@
       </div>
 
       <div class="tab-panel active" id="tab-assessment" role="tabpanel">
+        <section class="stage-card" id="session-card">
+          <div class="stage-header">
+            <div>
+              <h2>Session Details</h2>
+              <p class="overview">These details are saved with every update.</p>
+            </div>
+            <div class="session-header-actions">
+              <span class="muted" id="session-save-status"></span>
+              <button class="ghost" id="session-save-btn" type="button">Save</button>
+              <button class="ghost" id="session-new-btn" type="button">New Session</button>
+            </div>
+          </div>
+          <div class="session-grid">
+            <label class="session-field">
+              <span class="eyebrow">Participant ID</span>
+              <input type="text" id="session-participant-id" placeholder="Participant ID" />
+            </label>
+            <label class="session-field">
+              <span class="eyebrow">Proctor name</span>
+              <input type="text" id="session-proctor-name" placeholder="Proctor name" />
+            </label>
+            <label class="session-field">
+              <span class="eyebrow">Session date</span>
+              <input type="date" id="session-date" />
+            </label>
+            <div class="session-field session-actions">
+              <span class="eyebrow">Session ID</span>
+              <div class="session-id-row">
+                <code id="session-id-display">—</code>
+              </div>
+            </div>
+            <label class="session-field">
+              <span class="eyebrow">Load Session ID</span>
+              <div class="session-id-row">
+                <input type="text" id="session-load-id" placeholder="Enter session ID" />
+                <button class="ghost" id="session-load-btn" type="button">Load</button>
+              </div>
+            </label>
+          </div>
+          <div class="session-footer">
+            <button class="ghost" id="session-reset-btn" type="button">Reset</button>
+          </div>
+        </section>
+
       <main class="content-grid">
         <section class="stage-card">
           <div class="stage-header">
@@ -525,6 +572,25 @@
               </tr>
             </tfoot>
           </table>
+          <div class="fluency-readout">
+            <div>
+              <p class="eyebrow">Read-aloud timing</p>
+              <p class="muted">Open the raw list in a new tab, then time how long it takes to read aloud.</p>
+              <div class="fluency-read-controls">
+                <button class="ghost" id="fluency-open-raw-btn" type="button">Open Raw List</button>
+                <button class="ghost" id="fluency-read-start" type="button">Start Read Timer</button>
+                <button class="ghost" id="fluency-read-stop" type="button">Stop</button>
+                <button class="ghost danger" id="fluency-read-reset" type="button">Reset</button>
+                <span class="read-timer" id="fluency-read-time">0.0s</span>
+              </div>
+            </div>
+            <div class="fluency-vfi">
+              <p class="eyebrow">Spoken VFI</p>
+              <p class="result-title"><span id="fluency-vfi">—</span></p>
+              <p class="muted" id="fluency-vfi-calc">—</p>
+              <p class="muted">Score: <span id="fluency-vfi-score">0</span></p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -818,6 +884,25 @@
               </tr>
             </tfoot>
           </table>
+          <div class="fluency-readout">
+            <div>
+              <p class="eyebrow">Read-aloud timing</p>
+              <p class="muted">Open the raw list in a new tab, then time how long it takes to read aloud.</p>
+              <div class="fluency-read-controls">
+                <button class="ghost" id="fluency-t-open-raw-btn" type="button">Open Raw List</button>
+                <button class="ghost" id="fluency-t-read-start" type="button">Start Read Timer</button>
+                <button class="ghost" id="fluency-t-read-stop" type="button">Stop</button>
+                <button class="ghost danger" id="fluency-t-read-reset" type="button">Reset</button>
+                <span class="read-timer" id="fluency-t-read-time">0.0s</span>
+              </div>
+            </div>
+            <div class="fluency-vfi">
+              <p class="eyebrow">Spoken VFI</p>
+              <p class="result-title"><span id="fluency-t-vfi">—</span></p>
+              <p class="muted" id="fluency-t-vfi-calc">—</p>
+              <p class="muted">Score: <span id="fluency-t-vfi-score">0</span></p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1147,6 +1232,279 @@
             <tfoot>
               <tr>
                 <th colspan="5" style="text-align: right">Section Score (0-12): <span id="sentence-section-score">0</span></th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="social-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Picture preference</p>
+            <h2>Section 13 (Part A): Social Cognition</h2>
+            <p class="overview">
+              Say: "You are going to see some pictures, one in each corner of a box. You have to choose which picture you like best. Please say it outloud and respond as quickly as possible.”
+            </p>
+          </div>
+          <span class="status-badge" id="social-status">Idle</span>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Card</span>
+            <span id="social-progress-count" class="progress-count">1 / 6</span>
+          </div>
+          <div class="progress-bar">
+            <div id="social-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="social-grid" id="social-grid" aria-label="Select the preferred picture"></div>
+
+        <div class="controls">
+          <button class="ghost" id="social-prev-btn">Previous card</button>
+          <button class="ghost" id="social-next-btn">Next card</button>
+          <button class="ghost danger" id="social-reset-btn">Reset card</button>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Response log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Chosen Image</th>
+              </tr>
+            </thead>
+            <tbody id="social-log-body">
+              <tr class="empty-row">
+                <td colspan="2">No responses yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="social-b-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Face preference</p>
+            <h2>Section 13 (Part B): Social Cognition</h2>
+            <p class="overview">
+              Say: "You are going to see some pictures, one in each corner of a box. You have to choose which picture does the face like best. Say which the face likes best. Please respond as quickly as possible.”
+            </p>
+          </div>
+          <span class="status-badge" id="social-b-status">Idle</span>
+        </div>
+
+        <div class="progress-row">
+          <div class="progress-meta">
+            <span class="eyebrow">Card</span>
+            <span id="social-b-progress-count" class="progress-count">1 / 6</span>
+          </div>
+          <div class="progress-bar">
+            <div id="social-b-progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="social-b-stage" aria-label="Select the picture the face likes best">
+          <div class="social-b-grid" id="social-b-grid"></div>
+          <img class="social-b-face" id="social-b-face" alt="" aria-hidden="true" />
+        </div>
+
+        <div class="controls">
+          <button class="ghost" id="social-b-prev-btn">Previous card</button>
+          <button class="ghost" id="social-b-next-btn">Next card</button>
+          <button class="ghost danger" id="social-b-reset-btn">Reset card</button>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Response log</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Chosen Image</th>
+                <th>Result</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="social-b-log-body">
+              <tr class="empty-row">
+                <td colspan="4">No responses yet.</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" style="text-align: right">Section Score (0-12): <span id="social-b-section-score">0</span></th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="stage-card" id="delayed-story-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">14. Memory - Delayed Recall</p>
+            <h2>Delayed recall after story</h2>
+            <p class="overview">Ask the participant to recall the story again after the delay period.</p>
+          </div>
+          <span class="status-badge" id="delayed-story-status">Idle</span>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Prompt to read</p>
+          <p class="prompt">"I am going to read you a short story. Please listen carefully. When I am finished, say as much as you can remember."</p>
+          <p class="prompt">
+            Last <u><strong><em>Sunday</em></strong></u>, the <u><strong><em>Annual Park Cleanup</em></strong></u> took place in
+            <u><strong><em>Marigold Woods</em></strong></u>. <u><strong><em>Forty two</em></strong></u> people joined in to remove old
+            <u><strong><em>bicycles and shopping carts</em></strong></u>. Mr <u><strong><em>Robert Webber</em></strong></u> from the
+            <u><strong><em>woodland project</em></strong></u> told local reporters that he was very <u><strong><em>impressed and especially proud</em></strong></u> of the
+            <u><strong><em>17 children</em></strong></u> who came along.
+          </p>
+          <p class="prompt">"Now that's the end of the story, what can you remember?"</p>
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="delayed-story-start-btn">Start Listening</button>
+          <button class="ghost" id="delayed-story-stop-btn">Stop &amp; Capture</button>
+          <button class="ghost danger" id="delayed-story-reset-btn">Reset story responses</button>
+        </div>
+
+        <div class="live-area" aria-live="polite">
+          <p class="eyebrow">Live transcription</p>
+          <div id="delayed-story-live-words" class="live-words"></div>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Story recall Scoring</p>
+            <div class="story-actions">
+              <button class="ghost" id="delayed-story-score-deterministic-btn">Score Deterministically</button>
+              <button class="ghost" id="delayed-story-score-btn">Score with AI Assistant</button>
+            </div>
+          </div>
+          <table class="scoring-table">
+            <thead>
+              <tr>
+                <th>Term</th>
+                <th>Criteria</th>
+                <th>1 point</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Sunday</td>
+                <td>Only “Sunday” is accepted.</td>
+                <td><input id="delayed-story-sunday" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Annual Park Cleanup</td>
+                <td>“Annual cleanup”, “garbage cleanup”, “park cleanup”, or “annual trash cleanup”.</td>
+                <td><input id="delayed-story-annual_cleanup" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Marigold Woods</td>
+                <td>Any part of “Marigold Woods” verbatim; similar place like “forest”, “park”.</td>
+                <td><input id="delayed-story-marigold_woods" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Forty two</td>
+                <td>Only “Forty-two”.</td>
+                <td><input id="delayed-story-forty_two" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Bicycles and shopping carts</td>
+                <td>Mentions for both items; similar terms (e.g., “carts”, “trolley”).</td>
+                <td><input id="delayed-story-bicycles_and_carts" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Robert Webber</td>
+                <td>“Robert” and/or “Webber”.</td>
+                <td><input id="delayed-story-robert_webber" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Woodland project</td>
+                <td>“Woodland” plus a project synonym (e.g., “plan”).</td>
+                <td><input id="delayed-story-woodland_project" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Impressed and especially proud</td>
+                <td>Any positive emotional response (e.g., “pleased”).</td>
+                <td><input id="delayed-story-positive_emotion" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>17</td>
+                <td>Only “Seventeen”.</td>
+                <td><input id="delayed-story-seventeen" type="checkbox" /></td>
+              </tr>
+              <tr>
+                <td>Children</td>
+                <td>“Children” or similar (e.g., “kids”).</td>
+                <td><input id="delayed-story-children" type="checkbox" /></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="delayed-retention">
+            <div class="retention-row">
+              <div class="retention-equation">
+                <span class="retention-numerator">
+                  Delayed recall (<span id="delayed-story-raw">0</span>)
+                </span>
+                <span class="retention-divider"></span>
+                <span class="retention-denominator">
+                  Immediate recall (<span id="delayed-story-immediate">0</span>)
+                </span>
+              </div>
+              <div class="retention-formula">× 100 = <span id="delayed-story-retained">0%</span> retained</div>
+            </div>
+            <div class="retention-score">
+              Section Score (0-10): <span id="delayed-story-section-score">0</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage-card" id="delayed-recognition-card">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Story recognition (true / false)</p>
+            <h2>15. Memory - Delayed Recognition</h2>
+            <p class="overview">
+              Say: “Let’s see if you can remember anything more about that story. I will ask you some questions, please tell me if they are true or false.”
+            </p>
+            <p class="muted" id="delayed-recognition-admin">Administer</p>
+          </div>
+          <span class="status-badge" id="delayed-recognition-status">Idle</span>
+        </div>
+
+        <div class="log">
+          <div class="log-header">
+            <p class="eyebrow">Questions</p>
+          </div>
+          <table class="scoring-table">
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>True</th>
+                <th>False</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="delayed-recognition-body">
+              <tr class="empty-row">
+                <td colspan="4">No responses yet.</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" style="text-align: right">Section Score (0-4): <span id="delayed-recognition-score">0</span></th>
               </tr>
             </tfoot>
           </table>

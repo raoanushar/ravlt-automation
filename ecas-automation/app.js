@@ -146,6 +146,24 @@ const sentencePrompts = [
   "They all went to the local café for something to"
 ];
 
+const socialTrials = Array.from({ length: 6 }, (_, idx) => {
+  const card = idx + 1;
+  return {
+    card,
+    images: [1, 2, 3, 4].map(num => `form_a/social_cognition/${card}/${num}.png`)
+  };
+});
+const socialBAnswerKey = [2, 4, 1, 3, 4, 1];
+const socialBTrials = Array.from({ length: 6 }, (_, idx) => {
+  const card = idx + 1;
+  return {
+    card,
+    images: [1, 2, 3, 4].map(num => `form_a/social_cognition/${card}/${num}.png`),
+    face: `form_a/social_cognition/faces/${card}.png`,
+    correctIndex: Math.max(0, Math.min(3, (socialBAnswerKey[idx] || 1) - 1))
+  };
+});
+
 const PROMPT_DEFAULTS = {
   story: `You are an EDINBURGH COGNITIVE AND BEHAVIORAL ALS SCREEN proctor agent.
 
@@ -230,6 +248,15 @@ const PROMPT_STORAGE_KEYS = {
 
 const PROMPT_VERSION_KEY = "ecas.prompt.defaultsVersion";
 
+const SUPABASE_URL = window.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
+const supabaseClient =
+  window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+const SESSION_ID_KEY = "ecas.session.id";
+const SESSION_META_KEY = "ecas.session.meta";
+
 const sentenceState = {
   index: 0,
   status: "pending",
@@ -307,6 +334,23 @@ const dom = {
   storyScoreBtn: document.getElementById("story-score-btn"),
   storyScoreDeterministicBtn: document.getElementById("story-score-deterministic-btn"),
   storySectionScore: document.getElementById("story-section-score"),
+  delayedStoryStatus: document.getElementById("delayed-story-status"),
+  delayedStoryStartBtn: document.getElementById("delayed-story-start-btn"),
+  delayedStoryStopBtn: document.getElementById("delayed-story-stop-btn"),
+  delayedStoryResetBtn: document.getElementById("delayed-story-reset-btn"),
+  delayedStoryLiveWords: document.getElementById("delayed-story-live-words"),
+  delayedStoryLogBody: document.getElementById("delayed-story-log-body"),
+  delayedStoryScoreBtn: document.getElementById("delayed-story-score-btn"),
+  delayedStoryScoreDeterministicBtn: document.getElementById("delayed-story-score-deterministic-btn"),
+  delayedStorySectionScore: document.getElementById("delayed-story-section-score"),
+  delayedStoryRetained: document.getElementById("delayed-story-retained"),
+  delayedStoryRaw: document.getElementById("delayed-story-raw"),
+  delayedStoryImmediate: document.getElementById("delayed-story-immediate"),
+  delayedRecognitionStatus: document.getElementById("delayed-recognition-status"),
+  delayedRecognitionAdmin: document.getElementById("delayed-recognition-admin"),
+  delayedRecognitionBody: document.getElementById("delayed-recognition-body"),
+  delayedRecognitionScore: document.getElementById("delayed-recognition-score"),
+  delayedRecognitionCard: document.getElementById("delayed-recognition-card"),
   digitsStatus: document.getElementById("digits-status"),
   digitsProgressCount: document.getElementById("digits-progress-count"),
   digitsProgressFill: document.getElementById("digits-progress-fill"),
@@ -363,6 +407,16 @@ const dom = {
   fluencyProcessedNotes: document.getElementById("fluency-processed-notes"),
   fluencyRawTotal: document.getElementById("fluency-raw-total"),
   fluencyProcessedTotal: document.getElementById("fluency-processed-total"),
+  sessionParticipantId: document.getElementById("session-participant-id"),
+  sessionProctorName: document.getElementById("session-proctor-name"),
+  sessionDate: document.getElementById("session-date"),
+  sessionIdDisplay: document.getElementById("session-id-display"),
+  sessionLoadId: document.getElementById("session-load-id"),
+  sessionLoadBtn: document.getElementById("session-load-btn"),
+  sessionSaveBtn: document.getElementById("session-save-btn"),
+  sessionNewBtn: document.getElementById("session-new-btn"),
+  sessionResetBtn: document.getElementById("session-reset-btn"),
+  sessionSaveStatus: document.getElementById("session-save-status"),
   dotsStatus: document.getElementById("dots-status"),
   dotsProgressCount: document.getElementById("dots-progress-count"),
   dotsProgressFill: document.getElementById("dots-progress-fill"),
@@ -414,6 +468,24 @@ const dom = {
   sentenceNextBtn: document.getElementById("sentence-next-btn"),
   sentenceActiveLabel: document.getElementById("sentence-active-label"),
   sentenceLiveWords: document.getElementById("sentence-live-words"),
+  socialStatus: document.getElementById("social-status"),
+  socialProgressCount: document.getElementById("social-progress-count"),
+  socialProgressFill: document.getElementById("social-progress-fill"),
+  socialGrid: document.getElementById("social-grid"),
+  socialPrevBtn: document.getElementById("social-prev-btn"),
+  socialNextBtn: document.getElementById("social-next-btn"),
+  socialResetBtn: document.getElementById("social-reset-btn"),
+  socialLogBody: document.getElementById("social-log-body"),
+  socialBStatus: document.getElementById("social-b-status"),
+  socialBProgressCount: document.getElementById("social-b-progress-count"),
+  socialBProgressFill: document.getElementById("social-b-progress-fill"),
+  socialBGrid: document.getElementById("social-b-grid"),
+  socialBFace: document.getElementById("social-b-face"),
+  socialBPrevBtn: document.getElementById("social-b-prev-btn"),
+  socialBNextBtn: document.getElementById("social-b-next-btn"),
+  socialBResetBtn: document.getElementById("social-b-reset-btn"),
+  socialBLogBody: document.getElementById("social-b-log-body"),
+  socialBSectionScore: document.getElementById("social-b-section-score"),
   scoreLangNaming: document.getElementById("score-lang-naming"),
   scoreLangComp: document.getElementById("score-lang-comp"),
   scoreLangSpell: document.getElementById("score-lang-spell"),
@@ -473,8 +545,10 @@ let altIndex = 0;
 let dotsIndex = 0;
 let cubesIndex = 0;
 let numberlocIndex = 0;
+let socialIndex = 0;
+let socialBIndex = 0;
 let fluencyDragState = null; // { scope: "fluency" | "fluencyT", listType: "raw" | "scored", index: number }
-let captureContext = null; // { type: "naming" | "comprehension" | "spelling" | "story" | "fluency" | "fluencyT" | "digits" | "alternation" | "dots" | "cubes" | "numberloc" | "sentence" }
+let captureContext = null; // { type: "naming" | "comprehension" | "spelling" | "story" | "storyDelayed" | "fluency" | "fluencyT" | "digits" | "alternation" | "dots" | "cubes" | "numberloc" | "sentence" }
 let namingSessionEnded = false;
 let comprehensionSessionEnded = false;
 let digitsSessionEnded = false;
@@ -482,6 +556,8 @@ let dotsSessionEnded = false;
 let cubesSessionEnded = false;
 let numberlocSessionEnded = false;
 const sessionTimers = new Map();
+let sessionSaveTimer = null;
+let sessionSaveInFlight = false;
 const storyState = {
   status: "pending",
   tokens: [],
@@ -491,6 +567,49 @@ const storyState = {
   manualEdited: false,
   editingLive: false
 };
+const delayedStoryState = {
+  status: "pending",
+  tokens: [],
+  entries: [],
+  timestamp: null,
+  manualTranscript: "",
+  manualEdited: false,
+  editingLive: false
+};
+const delayedRecognitionQuestions = [
+  {
+    text: "Was the story about an event that occurred last Saturday?",
+    correct: false
+  },
+  {
+    text: "Was the event the park cleanup?",
+    correct: true
+  },
+  {
+    text: "Did this take place in Marigold Woods?",
+    correct: true
+  },
+  {
+    text: "Did they remove old soda cans and candy wrappers?",
+    correct: false
+  },
+  {
+    text: "Was the man in the story called Mr. Webber?",
+    correct: true
+  },
+  {
+    text: "Was his first name ‘Thomas’?",
+    correct: false
+  },
+  {
+    text: "Was he from the local government?",
+    correct: false
+  },
+  {
+    text: "Was he especially proud of the children for coming along?",
+    correct: true
+  }
+];
 const STORY_CRITERIA = [
   { key: "sunday", checkboxId: "story-sunday" },
   { key: "annual_cleanup", checkboxId: "story-annual_cleanup" },
@@ -503,7 +622,23 @@ const STORY_CRITERIA = [
   { key: "seventeen", checkboxId: "story-seventeen" },
   { key: "children", checkboxId: "story-children" }
 ];
+const DELAYED_STORY_CRITERIA = [
+  { key: "sunday", checkboxId: "delayed-story-sunday" },
+  { key: "annual_cleanup", checkboxId: "delayed-story-annual_cleanup" },
+  { key: "marigold_woods", checkboxId: "delayed-story-marigold_woods" },
+  { key: "forty_two", checkboxId: "delayed-story-forty_two" },
+  { key: "bicycles_and_carts", checkboxId: "delayed-story-bicycles_and_carts" },
+  { key: "robert_webber", checkboxId: "delayed-story-robert_webber" },
+  { key: "woodland_project", checkboxId: "delayed-story-woodland_project" },
+  { key: "positive_emotion", checkboxId: "delayed-story-positive_emotion" },
+  { key: "seventeen", checkboxId: "delayed-story-seventeen" },
+  { key: "children", checkboxId: "delayed-story-children" }
+];
 const storyScoreInputs = STORY_CRITERIA.reduce((acc, criterion) => {
+  acc[criterion.key] = document.getElementById(criterion.checkboxId);
+  return acc;
+}, {});
+const delayedStoryScoreInputs = DELAYED_STORY_CRITERIA.reduce((acc, criterion) => {
   acc[criterion.key] = document.getElementById(criterion.checkboxId);
   return acc;
 }, {});
@@ -513,12 +648,18 @@ Object.values(storyScoreInputs).forEach(input => {
     input.addEventListener("change", updateStoryScoreFromChecks);
   }
 });
+Object.values(delayedStoryScoreInputs).forEach(input => {
+  if (input) {
+    input.addEventListener("change", updateDelayedStoryScoreFromChecks);
+  }
+});
 const fluencyState = {
   status: "pending",
   tokens: [],
   entries: [],
   countdownMs: 60000,
   timer: { remainingMs: 60000, endTime: null, rafId: null, startTime: null },
+  readTimer: { running: false, startTime: null, elapsedMs: 0, baseMs: 0, intervalId: null },
   uniqueWords: new Set(),
   processedWords: [],
   processedNotes: [],
@@ -552,6 +693,7 @@ const fluencyTState = {
   entries: [],
   countdownMs: 60000,
   timer: { remainingMs: 60000, endTime: null, rafId: null, startTime: null },
+  readTimer: { running: false, startTime: null, elapsedMs: 0, baseMs: 0, intervalId: null },
   uniqueWords: new Set(),
   processedWords: [],
   processedNotes: [],
@@ -582,6 +724,25 @@ const numberlocStates = numberLocTrials.map(() => ({
   timestamp: null,
   candidate: ""
 }));
+const socialStates = socialTrials.map(() => ({
+  status: "pending",
+  selectedIndex: null,
+  timestamp: null
+}));
+const socialBStates = socialBTrials.map(() => ({
+  status: "pending",
+  selectedIndex: null,
+  timestamp: null,
+  correct: null,
+  score: null,
+  egocentric: null,
+  manualResult: false,
+  manualScore: false
+}));
+const delayedRecognitionStates = delayedRecognitionQuestions.map(() => ({
+  answer: null,
+  correct: null
+}));
 
 init();
 
@@ -589,6 +750,8 @@ function init() {
   bindControls();
   setupTabs();
   setupPromptEditor();
+  setupSessionMetadata();
+  // No per-section save buttons.
   loadItem(0);
   setupSpeechRecognition();
   setupComprehension();
@@ -600,6 +763,9 @@ function init() {
   setupDots();
   setupCubes();
   setupNumberLoc();
+  setupSocial();
+  setupSocialB();
+  setupDelayedRecognition();
   setupSentenceScoreEditing();
   setupSessionTimers();
   updateUI();
@@ -734,6 +900,40 @@ function bindControls() {
       applyStoryScore(result);
     });
   }
+  if (dom.delayedStoryStartBtn) {
+    dom.delayedStoryStartBtn.addEventListener("click", startDelayedStoryListening);
+  }
+  if (dom.delayedStoryStopBtn) {
+    dom.delayedStoryStopBtn.addEventListener("click", stopDelayedStoryListening);
+  }
+  if (dom.delayedStoryResetBtn) {
+    dom.delayedStoryResetBtn.addEventListener("click", resetDelayedStory);
+  }
+  if (dom.delayedStoryLiveWords) {
+    dom.delayedStoryLiveWords.addEventListener("dblclick", () => {
+      if (!delayedStoryState.editingLive) {
+        delayedStoryState.manualTranscript = getDelayedStoryTranscript();
+        delayedStoryState.manualEdited = true;
+        delayedStoryState.editingLive = true;
+        renderDelayedStoryUI();
+      }
+    });
+  }
+  if (dom.delayedStoryScoreBtn) {
+    dom.delayedStoryScoreBtn.addEventListener("click", scoreDelayedStoryWithLLM);
+  }
+  if (dom.delayedStoryScoreDeterministicBtn) {
+    dom.delayedStoryScoreDeterministicBtn.addEventListener("click", () => {
+      ensureDelayedStoryCaptureStopped();
+      if (!delayedStoryState.entries.length) {
+        alert("Capture the participant's delayed story recall before scoring.");
+        return;
+      }
+      const transcript = getDelayedStoryTranscript();
+      const result = keywordScoreStory(transcript);
+      applyDelayedStoryScore(result);
+    });
+  }
   if (document.getElementById("fluency-start-btn")) {
     document.getElementById("fluency-start-btn").addEventListener("click", startFluencyListening);
   }
@@ -746,6 +946,22 @@ function bindControls() {
   if (dom.fluencyScoreLLMBtn) {
     dom.fluencyScoreLLMBtn.addEventListener("click", scoreFluencyWithLLM);
   }
+  const fluencyOpenRawBtn = document.getElementById("fluency-open-raw-btn");
+  if (fluencyOpenRawBtn) {
+    fluencyOpenRawBtn.addEventListener("click", () => openRawListWindow(fluencyState, "Verbal Fluency - S"));
+  }
+  const fluencyReadStart = document.getElementById("fluency-read-start");
+  if (fluencyReadStart) {
+    fluencyReadStart.addEventListener("click", () => startReadTimer(fluencyState, updateFluencyUI));
+  }
+  const fluencyReadStop = document.getElementById("fluency-read-stop");
+  if (fluencyReadStop) {
+    fluencyReadStop.addEventListener("click", () => stopReadTimer(fluencyState, updateFluencyUI));
+  }
+  const fluencyReadReset = document.getElementById("fluency-read-reset");
+  if (fluencyReadReset) {
+    fluencyReadReset.addEventListener("click", () => resetReadTimer(fluencyState, updateFluencyUI));
+  }
   if (dom.fluencyAIResetBtn) {
     dom.fluencyAIResetBtn.addEventListener("click", () => {
       resetFluencyAISuggestions(fluencyState);
@@ -754,6 +970,22 @@ function bindControls() {
   }
   if (dom.fluencyTScoreLLMBtn) {
     dom.fluencyTScoreLLMBtn.addEventListener("click", scoreFluencyTWithLLM);
+  }
+  const fluencyTOpenRawBtn = document.getElementById("fluency-t-open-raw-btn");
+  if (fluencyTOpenRawBtn) {
+    fluencyTOpenRawBtn.addEventListener("click", () => openRawListWindow(fluencyTState, "Verbal Fluency - T"));
+  }
+  const fluencyTReadStart = document.getElementById("fluency-t-read-start");
+  if (fluencyTReadStart) {
+    fluencyTReadStart.addEventListener("click", () => startReadTimer(fluencyTState, updateFluencyTUI));
+  }
+  const fluencyTReadStop = document.getElementById("fluency-t-read-stop");
+  if (fluencyTReadStop) {
+    fluencyTReadStop.addEventListener("click", () => stopReadTimer(fluencyTState, updateFluencyTUI));
+  }
+  const fluencyTReadReset = document.getElementById("fluency-t-read-reset");
+  if (fluencyTReadReset) {
+    fluencyTReadReset.addEventListener("click", () => resetReadTimer(fluencyTState, updateFluencyTUI));
   }
   if (dom.fluencyTAIResetBtn) {
     dom.fluencyTAIResetBtn.addEventListener("click", () => {
@@ -867,6 +1099,24 @@ function bindControls() {
   }
   if (dom.numberlocResetBtn) {
     dom.numberlocResetBtn.addEventListener("click", resetNumberLoc);
+  }
+  if (dom.socialNextBtn) {
+    dom.socialNextBtn.addEventListener("click", () => moveSocial(socialIndex + 1));
+  }
+  if (dom.socialPrevBtn) {
+    dom.socialPrevBtn.addEventListener("click", () => moveSocial(socialIndex - 1));
+  }
+  if (dom.socialResetBtn) {
+    dom.socialResetBtn.addEventListener("click", resetSocial);
+  }
+  if (dom.socialBPrevBtn) {
+    dom.socialBPrevBtn.addEventListener("click", () => moveSocialB(socialBIndex - 1));
+  }
+  if (dom.socialBNextBtn) {
+    dom.socialBNextBtn.addEventListener("click", () => moveSocialB(socialBIndex + 1));
+  }
+  if (dom.socialBResetBtn) {
+    dom.socialBResetBtn.addEventListener("click", resetSocialB);
   }
 }
 
@@ -1039,6 +1289,863 @@ function setupPromptEditor() {
   });
 }
 
+function setupSessionMetadata() {
+  if (!dom.sessionIdDisplay) {
+    return;
+  }
+  const sessionId = getOrCreateSessionId();
+  dom.sessionIdDisplay.textContent = sessionId;
+
+  const meta = getStoredSessionMeta();
+  if (dom.sessionParticipantId) {
+    dom.sessionParticipantId.value = meta.participantId || "";
+    dom.sessionParticipantId.addEventListener("input", () => {
+      storeSessionMeta(getSessionMetaFromInputs());
+      scheduleSessionSave();
+    });
+  }
+  if (dom.sessionProctorName) {
+    dom.sessionProctorName.value = meta.proctorName || "";
+    dom.sessionProctorName.addEventListener("input", () => {
+      storeSessionMeta(getSessionMetaFromInputs());
+      scheduleSessionSave();
+    });
+  }
+  if (dom.sessionDate) {
+    dom.sessionDate.value = meta.sessionDate || new Date().toISOString().slice(0, 10);
+    dom.sessionDate.addEventListener("change", () => {
+      storeSessionMeta(getSessionMetaFromInputs());
+      scheduleSessionSave();
+    });
+  }
+  if (dom.sessionNewBtn) {
+    dom.sessionNewBtn.addEventListener("click", () => {
+      if (!window.confirm("Start a new session? This will reset all data on the page.")) {
+        return;
+      }
+      resetAllTests();
+      const nextId = createSessionId();
+      localStorage.setItem(SESSION_ID_KEY, nextId);
+      dom.sessionIdDisplay.textContent = nextId;
+      if (dom.sessionParticipantId) {
+        dom.sessionParticipantId.value = "";
+      }
+      if (dom.sessionProctorName) {
+        dom.sessionProctorName.value = "";
+      }
+      if (dom.sessionDate) {
+        dom.sessionDate.value = new Date().toISOString().slice(0, 10);
+      }
+      storeSessionMeta(getSessionMetaFromInputs());
+      scheduleSessionSave(true);
+    });
+  }
+  if (dom.sessionSaveBtn) {
+    dom.sessionSaveBtn.addEventListener("click", () => {
+      scheduleSessionSave(true);
+    });
+  }
+  if (dom.sessionLoadBtn) {
+    dom.sessionLoadBtn.addEventListener("click", () => {
+      const id = dom.sessionLoadId ? dom.sessionLoadId.value.trim() : "";
+      if (!id) {
+        alert("Enter a session ID to load.");
+        return;
+      }
+      loadSessionById(id);
+    });
+  }
+  if (dom.sessionResetBtn) {
+    dom.sessionResetBtn.addEventListener("click", () => {
+      if (dom.sessionParticipantId) {
+        dom.sessionParticipantId.value = "";
+      }
+      if (dom.sessionProctorName) {
+        dom.sessionProctorName.value = "";
+      }
+      if (dom.sessionDate) {
+        dom.sessionDate.value = new Date().toISOString().slice(0, 10);
+      }
+      storeSessionMeta(getSessionMetaFromInputs());
+      scheduleSessionSave(true);
+    });
+  }
+}
+
+function getOrCreateSessionId() {
+  const existing = localStorage.getItem(SESSION_ID_KEY);
+  if (existing) {
+    return existing;
+  }
+  const next = createSessionId();
+  localStorage.setItem(SESSION_ID_KEY, next);
+  return next;
+}
+
+function createSessionId() {
+  if (window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `session_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function getStoredSessionMeta() {
+  const raw = localStorage.getItem(SESSION_META_KEY);
+  if (!raw) {
+    return {};
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function storeSessionMeta(meta) {
+  localStorage.setItem(SESSION_META_KEY, JSON.stringify(meta));
+}
+
+function getSessionMetaFromInputs() {
+  return {
+    participantId: dom.sessionParticipantId ? dom.sessionParticipantId.value.trim() : "",
+    proctorName: dom.sessionProctorName ? dom.sessionProctorName.value.trim() : "",
+    sessionDate: dom.sessionDate ? dom.sessionDate.value : ""
+  };
+}
+
+function scheduleSessionSave(forceImmediate = false) {
+  if (!supabaseClient) {
+    return;
+  }
+  if (sessionSaveTimer) {
+    window.clearTimeout(sessionSaveTimer);
+  }
+  const delay = forceImmediate ? 0 : 1200;
+  sessionSaveTimer = window.setTimeout(() => {
+    sessionSaveTimer = null;
+    saveSessionSnapshot();
+  }, delay);
+}
+
+async function saveSessionSnapshot() {
+  if (!supabaseClient || sessionSaveInFlight) {
+    return;
+  }
+  const sessionId = getOrCreateSessionId();
+  const meta = getSessionMetaFromInputs();
+  const payload = buildSessionPayload();
+  sessionSaveInFlight = true;
+  setSessionSaveStatus("Saving...");
+  try {
+    const { error } = await supabaseClient
+      .from("ecas_sessions")
+      .upsert(
+        {
+          session_id: sessionId,
+          participant_id: meta.participantId || null,
+          proctor_name: meta.proctorName || null,
+          session_date: meta.sessionDate || null,
+          data: payload.data,
+          naming_data: payload.naming_data,
+          comprehension_data: payload.comprehension_data,
+          spelling_data: payload.spelling_data,
+          story_data: payload.story_data,
+          delayed_story_data: payload.delayed_story_data,
+          fluency_data: payload.fluency_data,
+          fluency_t_data: payload.fluency_t_data,
+          digits_data: payload.digits_data,
+          alternation_data: payload.alternation_data,
+          dots_data: payload.dots_data,
+          cubes_data: payload.cubes_data,
+          numberloc_data: payload.numberloc_data,
+          social_data: payload.social_data,
+          social_b_data: payload.social_b_data,
+          delayed_recognition_data: payload.delayed_recognition_data,
+          sentences_data: payload.sentences_data,
+          prompts: payload.prompts,
+          scores: payload.scores,
+          transcripts: payload.transcripts,
+          rationales: payload.rationales,
+          timers: payload.timers
+        },
+        { onConflict: "session_id" }
+      );
+    if (error) {
+      console.error("Supabase save failed", error);
+      setSessionSaveStatus("Save failed");
+    } else {
+      setSessionSaveStatus("Saved");
+    }
+  } catch (err) {
+    console.error("Supabase save failed", err);
+    setSessionSaveStatus("Save failed");
+  } finally {
+    sessionSaveInFlight = false;
+  }
+}
+
+function setSessionSaveStatus(text) {
+  if (!dom.sessionSaveStatus) {
+    return;
+  }
+  dom.sessionSaveStatus.textContent = text || "";
+  if (!text) {
+    return;
+  }
+  window.setTimeout(() => {
+    if (dom.sessionSaveStatus.textContent === text) {
+      dom.sessionSaveStatus.textContent = "";
+    }
+  }, 2000);
+}
+
+function resetAllTests() {
+  resetCurrentItem();
+  activeIndex = 0;
+  loadItem(0);
+
+  resetComprehension();
+  compIndex = 0;
+  moveComprehension(0, { force: true });
+
+  resetSpelling();
+  spellIndex = 0;
+  moveSpelling(0);
+
+  resetStory();
+  resetDelayedStory();
+  resetDelayedRecognition();
+
+  resetFluency();
+  resetFluencyT();
+
+  resetDigits();
+  digitsIndex = 0;
+  moveDigits(0, { force: true });
+
+  resetAlternation();
+  altIndex = 0;
+  moveAlternation(0);
+
+  resetDots();
+  dotsIndex = 0;
+  moveDots(0, { force: true });
+
+  resetCubes();
+  cubesIndex = 0;
+  moveCubes(0, { force: true });
+
+  resetNumberLoc();
+  numberlocIndex = 0;
+  moveNumberLoc(0, { force: true });
+
+  resetSocialAll();
+  socialIndex = 0;
+  moveSocial(0);
+
+  resetSocialBAll();
+  socialBIndex = 0;
+  moveSocialB(0);
+
+  sentenceState.index = 0;
+  sentenceState.responses = Array(sentencePrompts.length).fill("");
+  if (dom.sentenceInputs) {
+    dom.sentenceInputs.forEach(input => {
+      input.value = "";
+    });
+  }
+  if (dom.sentenceScoreCells) {
+    dom.sentenceScoreCells.forEach(cell => {
+      cell.textContent = "";
+      cell.classList.remove("score-invalid");
+    });
+  }
+  if (dom.sentenceNoteCells) {
+    dom.sentenceNoteCells.forEach(cell => {
+      cell.textContent = "";
+    });
+  }
+  if (dom.sentenceSectionScore) {
+    dom.sentenceSectionScore.textContent = "0";
+  }
+  updateUI();
+}
+
+function buildSessionPayload() {
+  const subtests = buildSubtestSnapshots();
+  return {
+    prompts: {
+      story: getPromptValue("story"),
+      fluency: getPromptValue("fluency"),
+      fluencyT: getPromptValue("fluencyT"),
+      sentence: getPromptValue("sentence")
+    },
+    scores: buildScoreSnapshot(),
+    transcripts: {
+      story: getStoryTranscript(),
+      delayed_story: getDelayedStoryTranscript()
+    },
+    rationales: {
+      fluency: extractFluencyRationales(fluencyState),
+      fluencyT: extractFluencyRationales(fluencyTState)
+    },
+    timers: serializeSessionTimers(),
+    data: {},
+    ...subtests
+  };
+}
+
+async function loadSessionById(sessionId) {
+  if (!supabaseClient) {
+    alert("Supabase is not configured.");
+    return;
+  }
+  setSessionSaveStatus("Loading...");
+  try {
+    const { data, error } = await supabaseClient
+      .from("ecas_sessions")
+      .select("*")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    if (error) {
+      console.error("Supabase load failed", error);
+      setSessionSaveStatus("Load failed");
+      return;
+    }
+    if (!data) {
+      setSessionSaveStatus("Not found");
+      return;
+    }
+    applyLoadedSession(data);
+    localStorage.setItem(SESSION_ID_KEY, sessionId);
+    if (dom.sessionIdDisplay) {
+      dom.sessionIdDisplay.textContent = sessionId;
+    }
+    setSessionSaveStatus("Loaded");
+  } catch (err) {
+    console.error("Supabase load failed", err);
+    setSessionSaveStatus("Load failed");
+  }
+}
+
+function applyLoadedSession(record) {
+  if (dom.sessionParticipantId) {
+    dom.sessionParticipantId.value = record.participant_id || "";
+  }
+  if (dom.sessionProctorName) {
+    dom.sessionProctorName.value = record.proctor_name || "";
+  }
+  if (dom.sessionDate) {
+    dom.sessionDate.value = record.session_date || "";
+  }
+  storeSessionMeta(getSessionMetaFromInputs());
+
+  if (record.prompts) {
+    Object.entries(PROMPT_STORAGE_KEYS).forEach(([kind, key]) => {
+      if (record.prompts[kind] !== undefined) {
+        localStorage.setItem(key, record.prompts[kind] || "");
+      }
+    });
+    ensurePromptDefaultsCurrent();
+    refreshPromptEditorInputs();
+  }
+
+  if (record.scores) {
+    applyScoreSnapshot(record.scores);
+  }
+
+  if (record.transcripts && record.transcripts.story !== undefined) {
+    storyState.manualTranscript = record.transcripts.story || "";
+    storyState.manualEdited = Boolean(storyState.manualTranscript);
+    storyState.editingLive = false;
+  }
+  if (record.transcripts && record.transcripts.delayed_story !== undefined) {
+    delayedStoryState.manualTranscript = record.transcripts.delayed_story || "";
+    delayedStoryState.manualEdited = Boolean(delayedStoryState.manualTranscript);
+    delayedStoryState.editingLive = false;
+  }
+
+  if (record.rationales) {
+    applyRationales(record.rationales);
+  }
+
+  if (record.data) {
+    applyStateSnapshot(record.data);
+  } else {
+    applyStateSnapshot({
+      naming: record.naming_data,
+      comprehension: record.comprehension_data,
+      spelling: record.spelling_data,
+      story: record.story_data,
+      delayedStory: record.delayed_story_data,
+      fluency: record.fluency_data,
+      fluencyT: record.fluency_t_data,
+      digits: record.digits_data,
+      alternation: record.alternation_data,
+      dots: record.dots_data,
+      cubes: record.cubes_data,
+      numberloc: record.numberloc_data,
+      social: record.social_data,
+      socialB: record.social_b_data,
+      delayedRecognition: record.delayed_recognition_data,
+      sentences: record.sentences_data
+    });
+  }
+  updateUI();
+}
+
+function refreshPromptEditorInputs() {
+  const map = [
+    { kind: "story", id: "prompt-story" },
+    { kind: "fluency", id: "prompt-fluency" },
+    { kind: "fluencyT", id: "prompt-fluency-t" },
+    { kind: "sentence", id: "prompt-sentence" }
+  ];
+  map.forEach(({ kind, id }) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = getPromptValue(kind);
+    }
+  });
+}
+
+function applyScoreSnapshot(scores) {
+  const setText = (el, value) => {
+    if (el && value !== undefined && value !== null) {
+      el.textContent = String(value);
+    }
+  };
+  setText(dom.scoreLangNaming, scores.langNaming);
+  setText(dom.scoreLangComp, scores.langComp);
+  setText(dom.scoreLangSpell, scores.langSpell);
+  setText(dom.scoreFluencyS, scores.fluencyS);
+  setText(dom.scoreFluencyT, scores.fluencyT);
+  setText(dom.scoreExecDigits, scores.execDigits);
+  setText(dom.scoreExecAlt, scores.execAlt);
+  setText(dom.scoreExecSentence, scores.execSentence);
+  setText(dom.scoreSocial, scores.social);
+  setText(dom.scoreAlsSpecific, scores.alsSpecific);
+  setText(dom.scoreMemoryImmediate, scores.memoryImmediate);
+  setText(dom.scoreMemoryDelayed, scores.memoryDelayed);
+  setText(dom.scoreMemoryRecog, scores.memoryRecog);
+  setText(dom.scoreVisuoDots, scores.visuoDots);
+  setText(dom.scoreVisuoCubes, scores.visuoCubes);
+  setText(dom.scoreVisuoNumberloc, scores.visuoNumberloc);
+  setText(dom.scoreAlsNonspecific, scores.alsNonspecific);
+  setText(dom.scoreEcasTotal, scores.total);
+  setText(dom.fluencySectionScore, scores.fluencySectionScore);
+  setText(dom.fluencyTSectionScore, scores.fluencyTSectionScore);
+  setText(dom.sentenceSectionScore, scores.sentenceSectionScore);
+  setText(dom.storySectionScore, scores.storySectionScore);
+  setText(dom.sectionScore, scores.namingSectionScore);
+  if (dom.delayedStorySectionScore && scores.memoryDelayed !== undefined && scores.memoryDelayed !== null) {
+    const match = String(scores.memoryDelayed).match(/(\d+)/);
+    if (match) {
+      dom.delayedStorySectionScore.textContent = match[1];
+    }
+  }
+}
+
+function applyRationales(rationales) {
+  if (rationales.fluency && Array.isArray(fluencyState.entries)) {
+    fluencyState.entries.forEach((entry, idx) => {
+      const word = entry?.word || "";
+      if (!word) return;
+      if (!fluencyState.aiReview) {
+        fluencyState.aiReview = [];
+      }
+      if (!fluencyState.aiReview[idx]) {
+        fluencyState.aiReview[idx] = { suggestion: "remove", decision: "pending", rationale: "" };
+      }
+      if (rationales.fluency[word]) {
+        fluencyState.aiReview[idx].manualNote = rationales.fluency[word];
+      }
+    });
+  }
+  if (rationales.fluencyT && Array.isArray(fluencyTState.entries)) {
+    fluencyTState.entries.forEach((entry, idx) => {
+      const word = entry?.word || "";
+      if (!word) return;
+      if (!fluencyTState.aiReview) {
+        fluencyTState.aiReview = [];
+      }
+      if (!fluencyTState.aiReview[idx]) {
+        fluencyTState.aiReview[idx] = { suggestion: "remove", decision: "pending", rationale: "" };
+      }
+      if (rationales.fluencyT[word]) {
+        fluencyTState.aiReview[idx].manualNote = rationales.fluencyT[word];
+      }
+    });
+  }
+}
+
+function applyStateSnapshot(snapshot) {
+  if (snapshot.naming) {
+    if (typeof snapshot.naming.activeIndex === "number") {
+      activeIndex = snapshot.naming.activeIndex;
+    }
+    if (Array.isArray(snapshot.naming.states)) {
+      itemStates.length = 0;
+      snapshot.naming.states.forEach(state => itemStates.push(state));
+    }
+  }
+  if (snapshot.comprehension) {
+    if (typeof snapshot.comprehension.index === "number") {
+      compIndex = snapshot.comprehension.index;
+    }
+    if (Array.isArray(snapshot.comprehension.states)) {
+      compStates.length = 0;
+      snapshot.comprehension.states.forEach(state => compStates.push(state));
+    }
+  }
+  if (snapshot.spelling) {
+    if (typeof snapshot.spelling.index === "number") {
+      spellIndex = snapshot.spelling.index;
+    }
+    if (Array.isArray(snapshot.spelling.states)) {
+      spellingStates.length = 0;
+      snapshot.spelling.states.forEach(state => spellingStates.push(state));
+    }
+  }
+  if (snapshot.story && snapshot.story.state) {
+    Object.assign(storyState, snapshot.story.state);
+  }
+  if (snapshot.delayedStory && snapshot.delayedStory.state) {
+    Object.assign(delayedStoryState, snapshot.delayedStory.state);
+    if (snapshot.delayedStory.retained) {
+      const retained = snapshot.delayedStory.retained;
+      if (dom.delayedStoryRaw && retained.delayed_score !== undefined) {
+        dom.delayedStoryRaw.textContent = `${retained.delayed_score}`;
+      }
+      if (dom.delayedStoryImmediate && retained.immediate_score !== undefined) {
+        dom.delayedStoryImmediate.textContent = `${retained.immediate_score}`;
+      }
+      if (dom.delayedStoryRetained && retained.retained_percent !== undefined) {
+        dom.delayedStoryRetained.textContent = `${Math.round(retained.retained_percent)}%`;
+      }
+      if (dom.delayedStorySectionScore && retained.converted_score !== undefined) {
+        dom.delayedStorySectionScore.textContent = `${retained.converted_score}`;
+      }
+    }
+  }
+  if (snapshot.fluency) {
+    Object.assign(fluencyState, snapshot.fluency);
+    if (fluencyState.readTimer) {
+      fluencyState.readTimer.running = false;
+      fluencyState.readTimer.startTime = null;
+      if (fluencyState.readTimer.intervalId) {
+        clearInterval(fluencyState.readTimer.intervalId);
+        fluencyState.readTimer.intervalId = null;
+      }
+    }
+  }
+  if (snapshot.fluencyT) {
+    Object.assign(fluencyTState, snapshot.fluencyT);
+    if (fluencyTState.readTimer) {
+      fluencyTState.readTimer.running = false;
+      fluencyTState.readTimer.startTime = null;
+      if (fluencyTState.readTimer.intervalId) {
+        clearInterval(fluencyTState.readTimer.intervalId);
+        fluencyTState.readTimer.intervalId = null;
+      }
+    }
+  }
+  if (snapshot.digits) {
+    if (typeof snapshot.digits.index === "number") {
+      digitsIndex = snapshot.digits.index;
+    }
+    if (Array.isArray(snapshot.digits.states)) {
+      digitStates.length = 0;
+      snapshot.digits.states.forEach(state => digitStates.push(state));
+    }
+  }
+  if (snapshot.alternation) {
+    if (typeof snapshot.alternation.index === "number") {
+      altIndex = snapshot.alternation.index;
+    }
+    if (Array.isArray(snapshot.alternation.states)) {
+      alternationStates.length = 0;
+      snapshot.alternation.states.forEach(state => alternationStates.push(state));
+    }
+    alternationHalted = Boolean(snapshot.alternation.halted);
+  }
+  if (snapshot.dots) {
+    if (typeof snapshot.dots.index === "number") {
+      dotsIndex = snapshot.dots.index;
+    }
+    if (Array.isArray(snapshot.dots.states)) {
+      dotsStates.length = 0;
+      snapshot.dots.states.forEach(state => dotsStates.push(state));
+    }
+  }
+  if (snapshot.cubes) {
+    if (typeof snapshot.cubes.index === "number") {
+      cubesIndex = snapshot.cubes.index;
+    }
+    if (Array.isArray(snapshot.cubes.states)) {
+      cubesStates.length = 0;
+      snapshot.cubes.states.forEach(state => cubesStates.push(state));
+    }
+  }
+  if (snapshot.numberloc) {
+    if (typeof snapshot.numberloc.index === "number") {
+      numberlocIndex = snapshot.numberloc.index;
+    }
+    if (Array.isArray(snapshot.numberloc.states)) {
+      numberlocStates.length = 0;
+      snapshot.numberloc.states.forEach(state => numberlocStates.push(state));
+    }
+  }
+  if (snapshot.social) {
+    if (typeof snapshot.social.index === "number") {
+      socialIndex = snapshot.social.index;
+    }
+    if (Array.isArray(snapshot.social.states)) {
+      socialStates.length = 0;
+      snapshot.social.states.forEach(state => socialStates.push(state));
+    }
+  }
+  if (snapshot.socialB) {
+    if (typeof snapshot.socialB.index === "number") {
+      socialBIndex = snapshot.socialB.index;
+    }
+    if (Array.isArray(snapshot.socialB.states)) {
+      socialBStates.length = 0;
+      snapshot.socialB.states.forEach(state => socialBStates.push(state));
+    }
+  }
+  if (snapshot.delayedRecognition && Array.isArray(snapshot.delayedRecognition.states)) {
+    delayedRecognitionStates.length = 0;
+    snapshot.delayedRecognition.states.forEach(state => delayedRecognitionStates.push(state));
+  }
+  if (snapshot.sentences) {
+    sentenceState.index = snapshot.sentences.index || 0;
+    if (Array.isArray(snapshot.sentences.responses) && dom.sentenceInputs) {
+      snapshot.sentences.responses.forEach((resp, idx) => {
+        const input = dom.sentenceInputs[idx];
+        if (input) input.value = resp.response || "";
+        const scoreCell = dom.sentenceScoreCells?.[idx];
+        if (scoreCell) updateSentenceScoreCell(scoreCell, resp.score || "");
+        const noteCell = dom.sentenceNoteCells?.[idx];
+        if (noteCell) noteCell.textContent = resp.notes || "";
+      });
+    }
+  }
+}
+function buildScoreSnapshot() {
+  const value = el => (el ? el.textContent || "" : "");
+  return {
+    langNaming: value(dom.scoreLangNaming),
+    langComp: value(dom.scoreLangComp),
+    langSpell: value(dom.scoreLangSpell),
+    fluencyS: value(dom.scoreFluencyS),
+    fluencyT: value(dom.scoreFluencyT),
+    execDigits: value(dom.scoreExecDigits),
+    execAlt: value(dom.scoreExecAlt),
+    execSentence: value(dom.scoreExecSentence),
+    social: value(dom.scoreSocial),
+    alsSpecific: value(dom.scoreAlsSpecific),
+    memoryImmediate: value(dom.scoreMemoryImmediate),
+    memoryDelayed: value(dom.scoreMemoryDelayed),
+    memoryRecog: value(dom.scoreMemoryRecog),
+    visuoDots: value(dom.scoreVisuoDots),
+    visuoCubes: value(dom.scoreVisuoCubes),
+    visuoNumberloc: value(dom.scoreVisuoNumberloc),
+    alsNonspecific: value(dom.scoreAlsNonspecific),
+    total: value(dom.scoreEcasTotal),
+    fluencySectionScore: value(dom.fluencySectionScore),
+    fluencyTSectionScore: value(dom.fluencyTSectionScore),
+    sentenceSectionScore: value(dom.sentenceSectionScore),
+    storySectionScore: value(dom.storySectionScore),
+    namingSectionScore: value(dom.sectionScore)
+  };
+}
+
+function buildStateSnapshot() {
+  return {
+    naming: {
+      activeIndex,
+      items,
+      states: itemStates
+    },
+    comprehension: {
+      index: compIndex,
+      prompts: comprehensionPrompts,
+      states: compStates
+    },
+    spelling: {
+      index: spellIndex,
+      words: spellingWords,
+      labels: spellingWordLabels,
+      states: spellingStates
+    },
+    story: {
+      state: storyState
+    },
+    delayedStory: {
+      state: delayedStoryState
+    },
+    fluency: serializeFluencyState(fluencyState),
+    fluencyT: serializeFluencyState(fluencyTState),
+    digits: {
+      index: digitsIndex,
+      trials: digitTrials,
+      states: digitStates
+    },
+    alternation: {
+      index: altIndex,
+      trials: alternationTrials,
+      states: alternationStates,
+      halted: alternationHalted
+    },
+    dots: {
+      index: dotsIndex,
+      trials: dotTrials,
+      states: dotsStates
+    },
+    cubes: {
+      index: cubesIndex,
+      trials: cubeTrials,
+      states: cubesStates
+    },
+    numberloc: {
+      index: numberlocIndex,
+      trials: numberLocTrials,
+      states: numberlocStates
+    },
+    social: {
+      index: socialIndex,
+      trials: socialTrials,
+      states: socialStates
+    },
+    socialB: {
+      index: socialBIndex,
+      trials: socialBTrials,
+      states: socialBStates
+    },
+    delayedRecognition: {
+      questions: delayedRecognitionQuestions,
+      states: delayedRecognitionStates
+    },
+    sentences: {
+      index: sentenceState.index,
+      prompts: sentencePrompts,
+      responses: getSentenceResponses()
+    }
+  };
+}
+
+function buildSubtestSnapshots() {
+  const snapshot = buildStateSnapshot();
+  const fluencyRead = buildFluencyReadMetrics(fluencyState);
+  const fluencyTRead = buildFluencyReadMetrics(fluencyTState);
+  const delayedRetention = buildDelayedStoryRetention();
+  return {
+    naming_data: snapshot.naming,
+    comprehension_data: snapshot.comprehension,
+    spelling_data: snapshot.spelling,
+    story_data: snapshot.story,
+    delayed_story_data: { ...snapshot.delayedStory, retained: delayedRetention },
+    fluency_data: { ...snapshot.fluency, vfi: fluencyRead },
+    fluency_t_data: { ...snapshot.fluencyT, vfi: fluencyTRead },
+    digits_data: snapshot.digits,
+    alternation_data: snapshot.alternation,
+    dots_data: snapshot.dots,
+    cubes_data: snapshot.cubes,
+    numberloc_data: snapshot.numberloc,
+    social_data: snapshot.social,
+    social_b_data: snapshot.socialB,
+    delayed_recognition_data: snapshot.delayedRecognition,
+    sentences_data: snapshot.sentences
+  };
+}
+
+function buildFluencyReadMetrics(state) {
+  const seconds = (state.readTimer?.elapsedMs || 0) / 1000;
+  const correct = Array.isArray(state.processedWords) ? state.processedWords.length : 0;
+  const vfi = getFluencyVfi(seconds, correct);
+  return {
+    read_seconds: Number(seconds.toFixed(1)),
+    correct_words: correct,
+    vfi_value: vfi === null ? null : Number(vfi.toFixed(2)),
+    vfi_score: getFluencyVFIScore(state, correct)
+  };
+}
+
+function buildDelayedStoryRetention() {
+  const immediate = getImmediateStoryScore();
+  const delayed = getDelayedRawScore();
+  const percent = getDelayedRetentionPercent();
+  return {
+    immediate_score: immediate,
+    delayed_score: delayed,
+    retained_percent: Number(percent.toFixed(1)),
+    converted_score: getDelayedRecallScore(delayed)
+  };
+}
+
+function serializeFluencyState(state) {
+  const readTimer = state.readTimer || {};
+  return {
+    status: state.status,
+    tokens: state.tokens,
+    entries: state.entries,
+    uniqueWords: state.uniqueWords ? Array.from(state.uniqueWords) : [],
+    aiReview: state.aiReview,
+    aiKeepMask: state.aiKeepMask,
+    processedWords: state.processedWords,
+    processedNotes: state.processedNotes,
+    timer: state.timer,
+    readTimer: {
+      elapsedMs: readTimer.elapsedMs || 0,
+      baseMs: readTimer.baseMs || 0,
+      running: false
+    }
+  };
+}
+
+function getSentenceResponses() {
+  const inputs = dom.sentenceInputs || [];
+  return inputs.map((input, idx) => ({
+    prompt: sentencePrompts[idx] || "",
+    response: (input.value || "").trim(),
+    score: dom.sentenceScoreCells?.[idx]?.textContent || "",
+    notes: dom.sentenceNoteCells?.[idx]?.textContent || ""
+  }));
+}
+
+function extractFluencyRationales(state) {
+  const map = {};
+  if (!Array.isArray(state.entries)) {
+    return map;
+  }
+  state.entries.forEach((entry, idx) => {
+    const word = entry && entry.word ? entry.word : "";
+    if (!word) {
+      return;
+    }
+    const review = Array.isArray(state.aiReview) ? state.aiReview[idx] : null;
+    if (review && review.rationale) {
+      map[word] = review.rationale;
+    }
+    if (review && review.manualNote) {
+      map[word] = review.manualNote;
+    }
+  });
+  return map;
+}
+
+function serializeSessionTimers() {
+  const result = {};
+  sessionTimers.forEach((timer, sectionId) => {
+    result[sectionId] = {
+      elapsedMs: timer.elapsedMs,
+      running: Boolean(timer.intervalId)
+    };
+  });
+  return result;
+}
+
 function ensurePromptDefaultsCurrent() {
   const currentVersion = localStorage.getItem(PROMPT_VERSION_KEY);
   if (currentVersion === PROMPT_DEFAULTS_VERSION) {
@@ -1090,7 +2197,7 @@ function setupSentenceScoreEditing() {
 function setupSessionTimers() {
   document.querySelectorAll("section.stage-card").forEach(section => {
     const sectionId = section.getAttribute("id") || `section-${sessionTimers.size + 1}`;
-    if (sectionId === "agent-prompts-card" || sectionId === "overall-scores-card") {
+    if (sectionId === "agent-prompts-card" || sectionId === "overall-scores-card" || sectionId === "session-card") {
       return;
     }
     if (sessionTimers.has(sectionId)) {
@@ -1188,7 +2295,14 @@ function formatDuration(ms) {
 }
 
 function setAIDemoMode(enabled) {
-  const allowed = new Set(["story-card", "fluency-card", "fluency-t-card", "sentence-card"]);
+  const allowed = new Set([
+    "story-card",
+    "delayed-story-card",
+    "delayed-recognition-card",
+    "fluency-card",
+    "fluency-t-card",
+    "sentence-card"
+  ]);
   document.querySelectorAll("section.stage-card").forEach(section => {
     const id = section.getAttribute("id");
     const inPromptTab = Boolean(section.closest("#tab-prompts"));
@@ -1499,6 +2613,7 @@ function resetFluencyT() {
   fluencyTState.tokens = [];
   fluencyTState.entries = [];
   fluencyTState.uniqueWords = new Set();
+  resetReadTimer(fluencyTState);
   fluencyTState.timer.remainingMs = 60000;
   fluencyTState.timer.endTime = null;
   fluencyTState.timer.startTime = null;
@@ -1844,6 +2959,7 @@ function resetFluency() {
   fluencyState.tokens = [];
   fluencyState.entries = [];
   fluencyState.uniqueWords = new Set();
+  resetReadTimer(fluencyState);
   resetFluencyAIReview(fluencyState);
   fluencyState.timer.remainingMs = 60000;
   fluencyState.timer.endTime = null;
@@ -2086,7 +3202,9 @@ function resetDigits() {
   state.candidate = "";
   state.correct = false;
   state.timestamp = null;
-  dom.digitsManualInput.value = "";
+  if (dom.digitsManualInput) {
+    dom.digitsManualInput.value = "";
+  }
   updateDigitsUI();
 }
 
@@ -2394,6 +3512,145 @@ function getStoryTranscript() {
     .join("\n");
 }
 
+function startDelayedStoryListening() {
+  if (!speechSupported || !recognition) {
+    return;
+  }
+  if (delayedStoryState.status === "listening") {
+    return;
+  }
+  if (captureContext && captureContext.type !== "storyDelayed") {
+    if (recognition) {
+      recognition.stop();
+    }
+    captureContext = null;
+  }
+  delayedStoryState.status = "listening";
+  delayedStoryState.tokens = [];
+  delayedStoryState.entries = [];
+  delayedStoryState.timestamp = null;
+  delayedStoryState.manualTranscript = "";
+  delayedStoryState.manualEdited = false;
+  delayedStoryState.editingLive = false;
+  captureContext = { type: "storyDelayed" };
+  isStopping = false;
+  try {
+    recognition.start();
+  } catch (err) {
+    console.error("Failed to start delayed story recognition", err);
+  }
+  renderDelayedStoryUI();
+}
+
+function stopDelayedStoryListening() {
+  if (delayedStoryState.status !== "listening") {
+    return;
+  }
+  delayedStoryState.status = "finishing";
+  isStopping = true;
+  if (recognition) {
+    recognition.stop();
+  }
+  renderDelayedStoryUI();
+}
+
+function ensureDelayedStoryCaptureStopped() {
+  if (delayedStoryState.status === "listening") {
+    stopDelayedStoryListening();
+    finalizeDelayedStoryCapture();
+    return;
+  }
+  if (delayedStoryState.status === "finishing") {
+    finalizeDelayedStoryCapture();
+  }
+}
+
+function finalizeDelayedStoryCapture() {
+  delayedStoryState.status = "completed";
+  delayedStoryState.timestamp = Date.now();
+  captureContext = null;
+  isStopping = false;
+  renderDelayedStoryUI();
+}
+
+function resetDelayedStory() {
+  if (delayedStoryState.status === "listening" && recognition && captureContext && captureContext.type === "storyDelayed") {
+    recognition.stop();
+    captureContext = null;
+  }
+  delayedStoryState.status = "pending";
+  delayedStoryState.tokens = [];
+  delayedStoryState.entries = [];
+  delayedStoryState.timestamp = null;
+  delayedStoryState.manualTranscript = "";
+  delayedStoryState.manualEdited = false;
+  delayedStoryState.editingLive = false;
+  renderDelayedStoryUI();
+}
+
+function resetDelayedRecognition() {
+  delayedRecognitionStates.forEach(state => {
+    state.answer = null;
+    state.correct = null;
+  });
+  updateDelayedRecognitionUI();
+}
+
+function getDelayedStoryTranscript() {
+  if (delayedStoryState.manualEdited) {
+    return delayedStoryState.manualTranscript || "";
+  }
+  if (!delayedStoryState.entries.length) {
+    return "";
+  }
+  return delayedStoryState.entries
+    .slice()
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map(entry => entry.text || "")
+    .join("\n");
+}
+
+async function scoreDelayedStoryWithLLM() {
+  ensureDelayedStoryCaptureStopped();
+  if (!delayedStoryState.entries.length) {
+    alert("Capture the participant's delayed story recall before scoring.");
+    return;
+  }
+  try {
+    if (!STORY_SCORER_URL) {
+      alert("Set window.STORY_SCORER_URL to your scoring endpoint before using LLM scoring.");
+      return;
+    }
+    if (dom.delayedStoryScoreBtn) {
+      dom.delayedStoryScoreBtn.disabled = true;
+      dom.delayedStoryScoreBtn.textContent = "Scoring...";
+    }
+    const transcript = getDelayedStoryTranscript();
+    console.log("POSTing delayed story transcript to scorer", { url: STORY_SCORER_URL, length: transcript.length });
+    const response = await fetch(STORY_SCORER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript, prompt: getPromptValue("story") })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Scorer HTTP error", response.status, text);
+      throw new Error(`Scorer returned ${response.status}`);
+    }
+    const data = await response.json();
+    console.log("Delayed scorer response", data);
+    applyDelayedStoryScore(data);
+  } catch (err) {
+    console.error("Delayed story scoring failed", err);
+    alert("Delayed story scoring failed. Check the console and scorer configuration.");
+  } finally {
+    if (dom.delayedStoryScoreBtn) {
+      dom.delayedStoryScoreBtn.disabled = false;
+      dom.delayedStoryScoreBtn.textContent = "Score with AI Assistant";
+    }
+  }
+}
+
 async function scoreStoryWithLLM() {
   ensureStoryCaptureStopped();
   if (!storyState.entries.length) {
@@ -2535,6 +3792,8 @@ function applyStoryScore(result) {
   if (dom.storySectionScore) {
     dom.storySectionScore.textContent = `${total}`;
   }
+  updateDelayedRetentionDisplay();
+  scheduleSessionSave();
   updateScorecard();
 }
 
@@ -2549,7 +3808,208 @@ function updateStoryScoreFromChecks() {
   if (dom.storySectionScore) {
     dom.storySectionScore.textContent = `${total}`;
   }
+  updateDelayedRetentionDisplay();
+  scheduleSessionSave();
   updateScorecard();
+}
+
+function applyDelayedStoryScore(result) {
+  let total = 0;
+  DELAYED_STORY_CRITERIA.forEach(({ key }) => {
+    const input = delayedStoryScoreInputs[key];
+    const raw = result && result[key];
+    const value = raw === "yes" || raw === true;
+    if (input) {
+      input.checked = Boolean(value);
+    }
+    if (value) {
+      total += 1;
+    }
+  });
+  if (dom.delayedStorySectionScore) {
+    dom.delayedStorySectionScore.textContent = `${getDelayedRecallScore(total)}`;
+  }
+  updateDelayedRetentionDisplay();
+  scheduleSessionSave();
+  updateScorecard();
+}
+
+function updateDelayedStoryScoreFromChecks() {
+  let total = 0;
+  DELAYED_STORY_CRITERIA.forEach(({ key }) => {
+    const input = delayedStoryScoreInputs[key];
+    if (input && input.checked) {
+      total += 1;
+    }
+  });
+  if (dom.delayedStorySectionScore) {
+    dom.delayedStorySectionScore.textContent = `${getDelayedRecallScore(total)}`;
+  }
+  updateDelayedRetentionDisplay();
+  scheduleSessionSave();
+  updateScorecard();
+}
+
+function getImmediateStoryScore() {
+  let total = 0;
+  STORY_CRITERIA.forEach(({ key }) => {
+    const input = storyScoreInputs[key];
+    if (input && input.checked) {
+      total += 1;
+    }
+  });
+  return total;
+}
+
+function getDelayedRawScore() {
+  let total = 0;
+  DELAYED_STORY_CRITERIA.forEach(({ key }) => {
+    const input = delayedStoryScoreInputs[key];
+    if (input && input.checked) {
+      total += 1;
+    }
+  });
+  return total;
+}
+
+function getDelayedRetentionPercent() {
+  const immediate = getImmediateStoryScore();
+  const delayed = getDelayedRawScore();
+  if (!immediate) {
+    return 0;
+  }
+  return (delayed / immediate) * 100;
+}
+
+function getDelayedRecallScore(delayedRawScore) {
+  const immediate = getImmediateStoryScore();
+  if (!immediate) {
+    return 0;
+  }
+  const percent = (delayedRawScore / immediate) * 100;
+  if (percent <= 0) {
+    return 0;
+  }
+  if (percent <= 10) return 1;
+  if (percent <= 20) return 2;
+  if (percent <= 30) return 3;
+  if (percent <= 40) return 4;
+  if (percent <= 50) return 5;
+  if (percent <= 60) return 6;
+  if (percent <= 70) return 7;
+  if (percent <= 80) return 8;
+  if (percent <= 90) return 9;
+  return 10;
+}
+
+function updateDelayedRetentionDisplay() {
+  const percent = getDelayedRetentionPercent();
+  const delayedRaw = getDelayedRawScore();
+  const immediate = getImmediateStoryScore();
+  if (dom.delayedStoryRaw) {
+    dom.delayedStoryRaw.textContent = `${delayedRaw}`;
+  }
+  if (dom.delayedStoryImmediate) {
+    dom.delayedStoryImmediate.textContent = `${immediate}`;
+  }
+  if (dom.delayedStoryRetained) {
+    dom.delayedStoryRetained.textContent = `${Math.round(percent)}%`;
+  }
+  if (dom.delayedStorySectionScore) {
+    dom.delayedStorySectionScore.textContent = `${getDelayedRecallScore(delayedRaw)}`;
+  }
+  updateDelayedRecognitionUI();
+}
+
+function updateDelayedRecognitionUI() {
+  if (!dom.delayedRecognitionBody || !dom.delayedRecognitionStatus) {
+    return;
+  }
+  const shouldSkip = getDelayedRawScore() === 10;
+  if (dom.delayedRecognitionAdmin) {
+    if (shouldSkip) {
+      dom.delayedRecognitionAdmin.innerHTML =
+        '<span class="match-pill miss">Do not administer</span> <span class="pill-explainer miss">Participant has perfect score on recall so automatically gets full points on this section.</span>';
+    } else {
+      dom.delayedRecognitionAdmin.innerHTML =
+        '<span class="match-pill success">Administer</span> <span class="pill-explainer success">Participant did not recall all items, so administer this section.</span>';
+    }
+  }
+  dom.delayedRecognitionStatus.textContent = shouldSkip ? "Skip" : "Ready";
+  dom.delayedRecognitionStatus.className = shouldSkip ? "status-badge completed" : "status-badge";
+  if (dom.delayedRecognitionCard) {
+    dom.delayedRecognitionCard.classList.toggle("section-disabled", shouldSkip);
+  }
+
+  const frag = document.createDocumentFragment();
+  delayedRecognitionQuestions.forEach((question, idx) => {
+    const state = delayedRecognitionStates[idx];
+    const tr = document.createElement("tr");
+    const qTd = document.createElement("td");
+    qTd.textContent = question.text;
+
+    const trueTd = document.createElement("td");
+    const falseTd = document.createElement("td");
+    const resultTd = document.createElement("td");
+
+    const trueBtn = document.createElement("button");
+    trueBtn.type = "button";
+    trueBtn.className = `ghost tf-option ${state.answer === true ? "selected" : ""}`;
+    trueBtn.textContent = "T";
+    trueBtn.disabled = shouldSkip;
+    trueBtn.addEventListener("click", () => {
+      state.answer = true;
+      state.correct = question.correct === true;
+      updateDelayedRecognitionUI();
+    });
+
+    const falseBtn = document.createElement("button");
+    falseBtn.type = "button";
+    falseBtn.className = `ghost tf-option ${state.answer === false ? "selected" : ""}`;
+    falseBtn.textContent = "F";
+    falseBtn.disabled = shouldSkip;
+    falseBtn.addEventListener("click", () => {
+      state.answer = false;
+      state.correct = question.correct === false;
+      updateDelayedRecognitionUI();
+    });
+
+    trueTd.appendChild(trueBtn);
+    falseTd.appendChild(falseBtn);
+
+    if (state.answer === null) {
+      resultTd.textContent = "—";
+    } else {
+      const pill = document.createElement("span");
+      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+      pill.textContent = state.correct ? "Correct" : "Incorrect";
+      resultTd.appendChild(pill);
+    }
+
+    tr.append(qTd, trueTd, falseTd, resultTd);
+    frag.appendChild(tr);
+  });
+  dom.delayedRecognitionBody.innerHTML = "";
+  dom.delayedRecognitionBody.appendChild(frag);
+
+  const correctCount = delayedRecognitionStates.filter(state => state.correct).length;
+  const score = shouldSkip ? 4 : getRecognitionScore(correctCount);
+  if (dom.delayedRecognitionScore) {
+    dom.delayedRecognitionScore.textContent = `${score}`;
+  }
+  if (dom.scoreMemoryRecog) {
+    dom.scoreMemoryRecog.textContent = `${score}/4`;
+  }
+  updateScorecard();
+  scheduleSessionSave();
+}
+
+function getRecognitionScore(correctCount) {
+  if (correctCount >= 8) return 4;
+  if (correctCount === 7) return 3;
+  if (correctCount === 6) return 2;
+  if (correctCount === 5) return 1;
+  return 0;
 }
 
 function keywordScoreStory(transcript) {
@@ -3030,6 +4490,40 @@ function handleRecognitionResult(event) {
       }
     }
     renderStoryUI();
+    return;
+  }
+
+  if (captureContext.type === "storyDelayed") {
+    if (delayedStoryState.status !== "listening" && delayedStoryState.status !== "finishing") {
+      return;
+    }
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      const result = event.results[i];
+      if (!result.isFinal) {
+        continue;
+      }
+      const transcript = result[0].transcript || "";
+      const tokens = tokenize(transcript);
+      delayedStoryState.entries.push({
+        text: transcript.trim(),
+        timestamp: Date.now(),
+        tokens
+      });
+      delayedStoryState.tokens.push(...tokens);
+      if (delayedStoryState.manualEdited) {
+        const trimmed = transcript.trim();
+        if (trimmed) {
+          delayedStoryState.manualTranscript = delayedStoryState.manualTranscript
+            ? `${delayedStoryState.manualTranscript}\n${trimmed}`
+            : trimmed;
+          const textarea = dom.delayedStoryLiveWords ? dom.delayedStoryLiveWords.querySelector("textarea") : null;
+          if (textarea) {
+            textarea.value = delayedStoryState.manualTranscript;
+          }
+        }
+      }
+    }
+    renderDelayedStoryUI();
   }
 }
 
@@ -3184,6 +4678,17 @@ function handleRecognitionError(event) {
       captureContext = null;
       renderStoryUI();
     }
+  } else if (captureContext && captureContext.type === "storyDelayed") {
+    if (delayedStoryState.status === "listening" || delayedStoryState.status === "finishing") {
+      delayedStoryState.status = "pending";
+      delayedStoryState.tokens = [];
+      delayedStoryState.entries = [];
+      delayedStoryState.manualTranscript = "";
+      delayedStoryState.manualEdited = false;
+      delayedStoryState.editingLive = false;
+      captureContext = null;
+      renderDelayedStoryUI();
+    }
   }
 }
 
@@ -3319,6 +4824,14 @@ function handleRecognitionEnd() {
     }
     if (storyState.status === "finishing") {
       finalizeStoryCapture();
+    }
+  } else if (captureContext.type === "storyDelayed") {
+    if (delayedStoryState.status === "listening" && !isStopping) {
+      recognition.start();
+      return;
+    }
+    if (delayedStoryState.status === "finishing") {
+      finalizeDelayedStoryCapture();
     }
   }
 }
@@ -3785,6 +5298,7 @@ function updateUI() {
   updateButtons();
   updateComprehensionUI();
   renderStoryUI();
+  renderDelayedStoryUI();
   updateFluencyUI();
   updateFluencyTUI();
   updateDigitsUI();
@@ -3792,12 +5306,16 @@ function updateUI() {
   updateDotsUI();
   updateCubesUI();
   updateNumberLocUI();
+  updateSocialUI();
+  updateSocialBUI();
+  updateDelayedRecognitionUI();
   checkNamingCompletion();
   checkComprehensionCompletion();
   checkDigitsCompletion();
   checkDotsCompletion();
   checkCubesCompletion();
   checkNumberLocCompletion();
+  scheduleSessionSave();
 }
 
 function updateStatusBadge() {
@@ -3959,6 +5477,13 @@ function updateFluencyUI() {
   if (scoreEl) {
     scoreEl.textContent = `${fluencyState.uniqueWords.size} valid words`;
   }
+
+  updateFluencyReadout(fluencyState, {
+    timeId: "fluency-read-time",
+    vfiId: "fluency-vfi",
+    calcId: "fluency-vfi-calc",
+    scoreId: "fluency-vfi-score"
+  });
 
   const live = document.getElementById("fluency-live-words");
   if (live) {
@@ -4123,8 +5648,8 @@ function updateFluencyUI() {
     if (dom.fluencyProcessedTotal) {
       dom.fluencyProcessedTotal.textContent = processed.length ? processed.length : "";
     }
-    if (dom.fluencySectionScore) {
-      dom.fluencySectionScore.textContent = processed.length ? `${processed.length}` : "0";
+  if (dom.fluencySectionScore) {
+      dom.fluencySectionScore.textContent = `${getFluencyVFIScore(fluencyState, processed.length)}`;
     }
   }
   renderFluencyNotes();
@@ -4145,6 +5670,143 @@ function renderFluencyNotes() {
   } else {
     dom.fluencyProcessedNotes.textContent = notes.join(", ");
   }
+}
+
+function openRawListWindow(state, title) {
+  const rawWords = state.entries.map(entry => entry.word).filter(Boolean);
+  const listHtml = rawWords.map(word => `<li>${escapeHtml(word)}</li>`).join("");
+  const content = `
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)} - Raw List</title>
+        <style>
+          body { font-family: "Inter", "Segoe UI", sans-serif; padding: 24px; background: #f8fafc; }
+          ol { font-size: 22px; line-height: 1.6; }
+        </style>
+      </head>
+      <body>
+        <ol>${listHtml || "<li>No words captured yet.</li>"}</ol>
+      </body>
+    </html>
+  `;
+  const win = window.open("", "_blank");
+  if (!win) {
+    alert("Popup blocked. Allow popups to open the raw list.");
+    return;
+  }
+  win.document.open();
+  win.document.write(content);
+  win.document.close();
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function startReadTimer(state, onUpdate) {
+  if (!state.readTimer) {
+    return;
+  }
+  if (state.readTimer.running) {
+    return;
+  }
+  state.readTimer.running = true;
+  state.readTimer.startTime = Date.now();
+  if (!state.readTimer.baseMs) {
+    state.readTimer.baseMs = state.readTimer.elapsedMs || 0;
+  }
+  state.readTimer.intervalId = setInterval(() => {
+    state.readTimer.elapsedMs = Date.now() - state.readTimer.startTime + (state.readTimer.baseMs || 0);
+    if (onUpdate) {
+      onUpdate();
+    }
+  }, 100);
+  if (onUpdate) {
+    onUpdate();
+  }
+}
+
+function stopReadTimer(state, onUpdate) {
+  if (!state.readTimer || !state.readTimer.running) {
+    return;
+  }
+  state.readTimer.elapsedMs = Date.now() - state.readTimer.startTime + (state.readTimer.baseMs || 0);
+  state.readTimer.baseMs = state.readTimer.elapsedMs;
+  state.readTimer.running = false;
+  if (state.readTimer.intervalId) {
+    clearInterval(state.readTimer.intervalId);
+    state.readTimer.intervalId = null;
+  }
+  if (onUpdate) {
+    onUpdate();
+  }
+  scheduleSessionSave();
+}
+
+function resetReadTimer(state, onUpdate) {
+  if (!state.readTimer) {
+    return;
+  }
+  if (state.readTimer.intervalId) {
+    clearInterval(state.readTimer.intervalId);
+    state.readTimer.intervalId = null;
+  }
+  state.readTimer.running = false;
+  state.readTimer.startTime = null;
+  state.readTimer.elapsedMs = 0;
+  state.readTimer.baseMs = 0;
+  if (onUpdate) {
+    onUpdate();
+  }
+  scheduleSessionSave();
+}
+
+function updateFluencyReadout(state, ids) {
+  const timerEl = document.getElementById(ids.timeId);
+  const vfiEl = document.getElementById(ids.vfiId);
+  const calcEl = ids.calcId ? document.getElementById(ids.calcId) : null;
+  const scoreEl = document.getElementById(ids.scoreId);
+  if (!timerEl || !vfiEl || !scoreEl) {
+    return;
+  }
+  const seconds = (state.readTimer?.elapsedMs || 0) / 1000;
+  timerEl.textContent = `${seconds.toFixed(1)}s`;
+  const correct = Array.isArray(state.processedWords) ? state.processedWords.length : 0;
+  const vfi = getFluencyVfi(seconds, correct);
+  vfiEl.textContent = vfi === null ? "—" : vfi.toFixed(2);
+  if (calcEl) {
+    calcEl.textContent = vfi === null ? "VFI = (60 − t) / correct" : `VFI = (60 − ${seconds.toFixed(1)}) / ${correct}`;
+  }
+  scoreEl.textContent = `${getFluencyVFIScore(state, correct)}`;
+}
+
+function getFluencyVfi(seconds, correctWords) {
+  if (!correctWords) {
+    return null;
+  }
+  const remaining = Math.max(0, 60 - seconds);
+  return remaining / correctWords;
+}
+
+function getFluencyVFIScore(state, correctWords) {
+  const vfi = getFluencyVfi((state.readTimer?.elapsedMs || 0) / 1000, correctWords);
+  if (vfi === null) {
+    return 0;
+  }
+  if (vfi >= 12) return 0;
+  if (vfi >= 10) return 2;
+  if (vfi >= 8) return 4;
+  if (vfi >= 6) return 6;
+  if (vfi >= 4) return 8;
+  if (vfi >= 2) return 10;
+  return 12;
 }
 
 function renderFluencyTNotes() {
@@ -4196,6 +5858,13 @@ function updateFluencyTUI() {
   if (dom.fluencyTScore) {
     dom.fluencyTScore.textContent = `${fluencyTState.uniqueWords.size} valid words`;
   }
+
+  updateFluencyReadout(fluencyTState, {
+    timeId: "fluency-t-read-time",
+    vfiId: "fluency-t-vfi",
+    calcId: "fluency-t-vfi-calc",
+    scoreId: "fluency-t-vfi-score"
+  });
 
   if (dom.fluencyTLiveWords) {
     if (!fluencyTState.tokens.length) {
@@ -4365,7 +6034,7 @@ function updateFluencyTUI() {
       dom.fluencyTProcessedTotal.textContent = processed.length ? `${processed.length}` : "0";
     }
     if (dom.fluencyTSectionScore) {
-      dom.fluencyTSectionScore.textContent = processed.length ? `${processed.length}` : "0";
+      dom.fluencyTSectionScore.textContent = `${getFluencyVFIScore(fluencyTState, processed.length)}`;
     }
   }
   renderFluencyTNotes();
@@ -4641,6 +6310,75 @@ function renderStoryUI() {
         });
       dom.storyLogBody.innerHTML = "";
       dom.storyLogBody.appendChild(frag);
+    }
+  }
+}
+
+function renderDelayedStoryUI() {
+  if (!dom.delayedStoryStatus) {
+    return;
+  }
+  const status = delayedStoryState.status;
+  let label = "Idle";
+  if (status === "listening") {
+    label = "Listening";
+  } else if (status === "finishing") {
+    label = "Finishing";
+  } else if (status === "completed") {
+    label = "Completed";
+  }
+  dom.delayedStoryStatus.textContent = label;
+  dom.delayedStoryStatus.className =
+    status === "completed"
+      ? "status-badge completed"
+      : status === "listening"
+      ? "status-badge listening"
+      : "status-badge";
+
+  if (dom.delayedStoryStartBtn) {
+    dom.delayedStoryStartBtn.disabled = !speechSupported || status === "listening";
+  }
+  if (dom.delayedStoryStopBtn) {
+    dom.delayedStoryStopBtn.disabled = status !== "listening";
+  }
+  if (dom.delayedStoryResetBtn) {
+    dom.delayedStoryResetBtn.disabled = status === "listening";
+  }
+
+  if (dom.delayedStoryLiveWords) {
+    if (delayedStoryState.editingLive) {
+      if (!dom.delayedStoryLiveWords.querySelector("textarea")) {
+        const textarea = document.createElement("textarea");
+        textarea.className = "story-live-edit";
+        textarea.value = getDelayedStoryTranscript();
+        dom.delayedStoryLiveWords.innerHTML = "";
+        dom.delayedStoryLiveWords.appendChild(textarea);
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        const previousValue = textarea.value;
+        textarea.addEventListener("keydown", event => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            delayedStoryState.manualTranscript = previousValue;
+            delayedStoryState.manualEdited = true;
+            delayedStoryState.editingLive = false;
+            renderDelayedStoryUI();
+          }
+        });
+        textarea.addEventListener("input", () => {
+          delayedStoryState.manualTranscript = textarea.value;
+          delayedStoryState.manualEdited = true;
+        });
+        textarea.addEventListener("blur", () => {
+          delayedStoryState.manualTranscript = textarea.value;
+          delayedStoryState.manualEdited = true;
+          delayedStoryState.editingLive = false;
+          renderDelayedStoryUI();
+        });
+      }
+    } else {
+      const transcript = getDelayedStoryTranscript();
+      dom.delayedStoryLiveWords.textContent = transcript || "No words captured yet.";
     }
   }
 }
@@ -5311,6 +7049,328 @@ function renderNumberLocLog() {
   updateScorecard();
 }
 
+function setupSocial() {
+  updateSocialUI();
+}
+
+function setupSocialB() {
+  updateSocialBUI();
+}
+
+function setupDelayedRecognition() {
+  updateDelayedRecognitionUI();
+}
+
+function updateSocialUI() {
+  if (!dom.socialGrid || !dom.socialProgressFill || !dom.socialProgressCount || !dom.socialStatus) {
+    return;
+  }
+  const state = socialStates[socialIndex];
+  const completed = socialStates.filter(s => s.status === "completed").length;
+  const percent = Math.round((completed / socialTrials.length) * 100);
+  dom.socialProgressFill.style.width = `${percent}%`;
+  dom.socialProgressCount.textContent = `${socialIndex + 1} / ${socialTrials.length}`;
+  if (dom.socialPrevBtn) {
+    dom.socialPrevBtn.disabled = socialIndex === 0;
+  }
+  if (dom.socialNextBtn) {
+    dom.socialNextBtn.disabled = socialIndex >= socialTrials.length - 1;
+  }
+
+  let statusLabel = "Idle";
+  if (state.status === "completed") {
+    statusLabel = "Recorded";
+  } else if (state.selectedIndex !== null) {
+    statusLabel = "Selected";
+  }
+  dom.socialStatus.textContent = statusLabel;
+  dom.socialStatus.className =
+    state.status === "completed"
+      ? "status-badge completed"
+      : state.selectedIndex !== null
+      ? "status-badge listening"
+      : "status-badge";
+
+  renderSocialGrid();
+  renderSocialLog();
+  scheduleSessionSave();
+}
+
+function renderSocialGrid() {
+  if (!dom.socialGrid) {
+    return;
+  }
+  const state = socialStates[socialIndex];
+  const trial = socialTrials[socialIndex];
+  if (!trial) {
+    dom.socialGrid.innerHTML = "";
+    return;
+  }
+  dom.socialGrid.innerHTML = "";
+  trial.images.forEach((src, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "social-option";
+    if (state.selectedIndex === idx) {
+      btn.classList.add("selected");
+    }
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = `Social cognition option ${idx + 1}`;
+    btn.appendChild(img);
+    btn.addEventListener("click", () => {
+      state.selectedIndex = idx;
+      state.status = "completed";
+      state.timestamp = Date.now();
+      if (socialIndex < socialTrials.length - 1) {
+        moveSocial(socialIndex + 1);
+      } else {
+        updateSocialUI();
+      }
+    });
+    dom.socialGrid.appendChild(btn);
+  });
+}
+
+function renderSocialLog() {
+  if (!dom.socialLogBody) {
+    return;
+  }
+  const completed = socialStates.filter(s => s.status === "completed");
+  if (!completed.length) {
+    dom.socialLogBody.innerHTML = '<tr class="empty-row"><td colspan="2">No responses yet.</td></tr>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  socialStates.forEach((state, idx) => {
+    if (state.status !== "completed") {
+      return;
+    }
+    const tr = document.createElement("tr");
+    const cardTd = document.createElement("td");
+    cardTd.textContent = idx + 1;
+    const chosenTd = document.createElement("td");
+    chosenTd.textContent = state.selectedIndex !== null ? `Image ${state.selectedIndex + 1}` : "—";
+    tr.append(cardTd, chosenTd);
+    frag.appendChild(tr);
+  });
+  dom.socialLogBody.innerHTML = "";
+  dom.socialLogBody.appendChild(frag);
+}
+
+function moveSocial(nextIndex) {
+  socialIndex = Math.max(0, Math.min(socialTrials.length - 1, nextIndex));
+  updateSocialUI();
+}
+
+function resetSocial() {
+  const state = socialStates[socialIndex];
+  state.status = "pending";
+  state.selectedIndex = null;
+  state.timestamp = null;
+  updateSocialUI();
+}
+
+function resetSocialAll() {
+  socialStates.forEach(state => {
+    state.status = "pending";
+    state.selectedIndex = null;
+    state.timestamp = null;
+  });
+  updateSocialUI();
+}
+
+function updateSocialBUI() {
+  if (!dom.socialBGrid || !dom.socialBProgressFill || !dom.socialBProgressCount || !dom.socialBStatus) {
+    return;
+  }
+  const state = socialBStates[socialBIndex];
+  const completed = socialBStates.filter(s => s.status === "completed").length;
+  const percent = Math.round((completed / socialBTrials.length) * 100);
+  dom.socialBProgressFill.style.width = `${percent}%`;
+  dom.socialBProgressCount.textContent = `${socialBIndex + 1} / ${socialBTrials.length}`;
+  if (dom.socialBPrevBtn) {
+    dom.socialBPrevBtn.disabled = socialBIndex === 0;
+  }
+  if (dom.socialBNextBtn) {
+    dom.socialBNextBtn.disabled = socialBIndex >= socialBTrials.length - 1;
+  }
+
+  let statusLabel = "Idle";
+  if (state.status === "completed") {
+    statusLabel = "Recorded";
+  } else if (state.selectedIndex !== null) {
+    statusLabel = "Selected";
+  }
+  dom.socialBStatus.textContent = statusLabel;
+  dom.socialBStatus.className =
+    state.status === "completed"
+      ? "status-badge completed"
+      : state.selectedIndex !== null
+      ? "status-badge listening"
+      : "status-badge";
+
+  renderSocialBGrid();
+  renderSocialBLog();
+  updateSocialBScore();
+  scheduleSessionSave();
+}
+
+function renderSocialBGrid() {
+  if (!dom.socialBGrid) {
+    return;
+  }
+  const state = socialBStates[socialBIndex];
+  const trial = socialBTrials[socialBIndex];
+  if (!trial) {
+    dom.socialBGrid.innerHTML = "";
+    if (dom.socialBFace) dom.socialBFace.removeAttribute("src");
+    return;
+  }
+  dom.socialBGrid.innerHTML = "";
+  trial.images.forEach((src, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "social-option";
+    if (state.selectedIndex === idx) {
+      btn.classList.add("selected");
+    }
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = `Social cognition option ${idx + 1}`;
+    btn.appendChild(img);
+    btn.addEventListener("click", () => {
+      state.selectedIndex = idx;
+      state.status = "completed";
+      state.timestamp = Date.now();
+      scoreSocialBState(socialBIndex);
+      if (socialBIndex < socialBTrials.length - 1) {
+        moveSocialB(socialBIndex + 1);
+      } else {
+        updateSocialBUI();
+      }
+    });
+    dom.socialBGrid.appendChild(btn);
+  });
+  if (dom.socialBFace) {
+    dom.socialBFace.src = trial.face;
+  }
+}
+
+function renderSocialBLog() {
+  if (!dom.socialBLogBody) {
+    return;
+  }
+  const completed = socialBStates.filter(s => s.status === "completed");
+  if (!completed.length) {
+    dom.socialBLogBody.innerHTML = '<tr class="empty-row"><td colspan="4">No responses yet.</td></tr>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  socialBStates.forEach((state, idx) => {
+    if (state.status !== "completed") {
+      return;
+    }
+    const tr = document.createElement("tr");
+    const cardTd = document.createElement("td");
+    cardTd.textContent = idx + 1;
+    const chosenTd = document.createElement("td");
+    chosenTd.textContent = state.selectedIndex !== null ? `Image ${state.selectedIndex + 1}` : "—";
+    const resultTd = document.createElement("td");
+    const pill = document.createElement("span");
+    pill.className = `match-pill clickable ${state.correct === true ? "success" : "miss"}`;
+    pill.textContent = state.correct === true ? "Correct" : "Incorrect";
+    pill.addEventListener("click", () => {
+      if (state.selectedIndex === null) {
+        return;
+      }
+      const nextCorrect = state.correct === true ? false : true;
+      state.manualResult = true;
+      state.correct = nextCorrect;
+      state.egocentric =
+        !nextCorrect && socialStates[idx]?.selectedIndex !== null && socialStates[idx]?.selectedIndex === state.selectedIndex;
+      if (!state.manualScore) {
+        state.score = nextCorrect ? 2 : state.egocentric ? 0 : 1;
+      }
+      updateSocialBUI();
+    });
+    resultTd.appendChild(pill);
+    const scoreTd = document.createElement("td");
+    const scoreText = state.score !== null && state.score !== undefined ? `${state.score}` : "0";
+    scoreTd.textContent = scoreText;
+    scoreTd.classList.add("editable-cell");
+    attachInlineEdit(scoreTd, scoreText, newText => {
+      const nextValue = parseInt(newText, 10);
+      if (!Number.isFinite(nextValue)) {
+        return;
+      }
+      state.manualScore = true;
+      state.score = Math.max(0, Math.min(2, nextValue));
+      updateSocialBUI();
+    });
+    tr.append(cardTd, chosenTd, resultTd, scoreTd);
+    frag.appendChild(tr);
+  });
+  dom.socialBLogBody.innerHTML = "";
+  dom.socialBLogBody.appendChild(frag);
+}
+
+function moveSocialB(nextIndex) {
+  socialBIndex = Math.max(0, Math.min(socialBTrials.length - 1, nextIndex));
+  updateSocialBUI();
+}
+
+function resetSocialB() {
+  const state = socialBStates[socialBIndex];
+  state.status = "pending";
+  state.selectedIndex = null;
+  state.timestamp = null;
+  state.correct = null;
+  state.score = null;
+  state.egocentric = null;
+  state.manualResult = false;
+  state.manualScore = false;
+  updateSocialBUI();
+}
+
+function resetSocialBAll() {
+  socialBStates.forEach(state => {
+    state.status = "pending";
+    state.selectedIndex = null;
+    state.timestamp = null;
+    state.correct = null;
+    state.score = null;
+    state.egocentric = null;
+    state.manualResult = false;
+    state.manualScore = false;
+  });
+  updateSocialBUI();
+}
+
+function scoreSocialBState(index) {
+  const state = socialBStates[index];
+  const trial = socialBTrials[index];
+  if (!state || !trial || state.selectedIndex === null) {
+    return;
+  }
+  if (!state.manualResult) {
+    state.correct = state.selectedIndex === trial.correctIndex;
+  }
+  const partAChoice = socialStates[index]?.selectedIndex ?? null;
+  state.egocentric = state.correct ? false : partAChoice !== null && partAChoice === state.selectedIndex;
+  if (!state.manualScore) {
+    state.score = state.correct ? 2 : state.egocentric ? 0 : 1;
+  }
+}
+
+function updateSocialBScore() {
+  socialBStates.forEach((_, idx) => scoreSocialBState(idx));
+  const total = socialBStates.reduce((sum, state) => sum + (Number.isFinite(state.score) ? state.score : 0), 0);
+  if (dom.scoreSocial) dom.scoreSocial.textContent = `${total}/12`;
+  if (dom.socialBSectionScore) dom.socialBSectionScore.textContent = `${total}`;
+  updateScorecard();
+}
+
 async function scoreSentencesWithLLM() {
   const inputs = dom.sentenceInputs || [];
   if (!inputs.length) {
@@ -5481,6 +7541,10 @@ function getScoreValue(el, max) {
   return Number.isFinite(val) ? Math.max(0, Math.min(val, max)) : 0;
 }
 
+function getSocialBTotalScore() {
+  return socialBStates.reduce((sum, state) => sum + (Number.isFinite(state.score) ? state.score : 0), 0);
+}
+
 function updateScorecard() {
   const naming = getScoreValue(dom.sectionScore, 8);
   const comp = getScoreValue(dom.compSectionScore, 8);
@@ -5490,10 +7554,10 @@ function updateScorecard() {
   const digits = getScoreValue(dom.digitsSectionScore, 12);
   const alt = getScoreValue(dom.altSectionScore, 12);
   const sentence = getScoreValue(dom.sentenceSectionScore, 12);
-  const social = 0; // not implemented
+  const social = getSocialBTotalScore();
   const story = getScoreValue(dom.storySectionScore, 10); // immediate recall
-  const memoryDelayed = 0; // not implemented
-  const memoryRecog = 0; // not implemented
+  const memoryDelayed = getScoreValue(dom.delayedStorySectionScore, 10);
+  const memoryRecog = getScoreValue(dom.delayedRecognitionScore, 4);
   const dots = getScoreValue(dom.dotsSectionScore, 4);
   const cubes = getScoreValue(dom.cubesSectionScore, 4);
   const numberloc = getScoreValue(dom.numberlocSectionScore, 4);

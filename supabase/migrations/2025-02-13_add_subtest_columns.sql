@@ -1,0 +1,17 @@
+alter table if exists ecas_sessions
+  add column if not exists naming_data jsonb not null default '{}'::jsonb,
+  add column if not exists comprehension_data jsonb not null default '{}'::jsonb,
+  add column if not exists spelling_data jsonb not null default '{}'::jsonb,
+  add column if not exists story_data jsonb not null default '{}'::jsonb,
+  add column if not exists delayed_story_data jsonb not null default '{}'::jsonb,
+  add column if not exists delayed_recognition_data jsonb not null default '{}'::jsonb,
+  add column if not exists fluency_data jsonb not null default '{}'::jsonb,
+  add column if not exists fluency_t_data jsonb not null default '{}'::jsonb,
+  add column if not exists digits_data jsonb not null default '{}'::jsonb,
+  add column if not exists alternation_data jsonb not null default '{}'::jsonb,
+  add column if not exists dots_data jsonb not null default '{}'::jsonb,
+  add column if not exists cubes_data jsonb not null default '{}'::jsonb,
+  add column if not exists numberloc_data jsonb not null default '{}'::jsonb,
+  add column if not exists social_data jsonb not null default '{}'::jsonb,
+  add column if not exists social_b_data jsonb not null default '{}'::jsonb,
+  add column if not exists sentences_data jsonb not null default '{}'::jsonb;
