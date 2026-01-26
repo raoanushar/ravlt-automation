@@ -2298,7 +2298,6 @@ function setAIDemoMode(enabled) {
   const allowed = new Set([
     "story-card",
     "delayed-story-card",
-    "delayed-recognition-card",
     "fluency-card",
     "fluency-t-card",
     "sentence-card"
