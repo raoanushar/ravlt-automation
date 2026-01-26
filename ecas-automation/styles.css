@@ -138,6 +138,7 @@ header h1 {
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .toggle input {

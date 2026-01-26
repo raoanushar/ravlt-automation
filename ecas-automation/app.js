@@ -4120,7 +4120,8 @@ function buildParticipantPayload() {
   }
   const sentenceStarted =
     sentenceState.status === "listening" ||
-    (sentenceState.responses && sentenceState.responses.length) ||
+    (sentenceState.responses &&
+      sentenceState.responses.some(resp => resp && String(resp.response || "").trim().length > 0)) ||
     (dom.sentenceInputs && Array.from(dom.sentenceInputs).some(input => (input.value || "").trim()));
   if (sentenceStarted) {
     section = "sentences";
