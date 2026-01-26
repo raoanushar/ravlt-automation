@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Participant View</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      body {
+        background: var(--bg);
+      }
+      .participant-view header {
+        position: static;
+      }
+      .participant-view .content-grid {
+        grid-template-columns: 1fr;
+      }
+      .participant-view .stage-card {
+        border: 1px solid var(--border);
+      }
+      .participant-view .image-frame {
+        min-height: 320px;
+      }
+      .participant-view #pv-comp-grid {
+        margin-top: 1.25rem;
+      }
+      .fluency-raw-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .fluency-raw-pill {
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #1e3a8a;
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+      .social-b-grid {
+        position: relative;
+      }
+      .social-b-grid .social-b-face {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+      .participant-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 0.75rem;
+      }
+      .participant-nav .ghost {
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        font-size: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body class="participant-view">
+    <div class="app">
+      <header>
+        <div class="title-row">
+          <div class="title-block">
+            <p class="eyebrow">Participant View</p>
+            <div class="title-line">
+              <h1>Edinburgh Cognitive and Behavioural ALS Screen (ECAS)</h1>
+              <span class="badge">Participant View</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="stage-card" id="pv-naming-card">
+          <div class="stage-header">
+            <div>
+              <p class="eyebrow">1. Language - Naming</p>
+              <h2 id="pv-item-title">Item 1 of 1</h2>
+              <p class="overview hidden" id="pv-instructions"></p>
+            </div>
+            <span class="status-badge" id="pv-status-badge">Idle</span>
+          </div>
+
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="eyebrow">Progress</span>
+              <span id="pv-progress-count" class="progress-count">1 / 1</span>
+            </div>
+            <div class="progress-bar">
+              <div id="pv-progress-fill" class="progress-fill"></div>
+            </div>
+          </div>
+
+          <div class="image-frame">
+            <img id="pv-prompt-image" src="" alt="Naming prompt" />
+          </div>
+          <div class="image-grid" id="pv-comp-grid"></div>
+        </section>
+        <div class="participant-nav">
+          <button class="ghost" id="pv-prev-btn" type="button" aria-label="Previous section">←</button>
+          <button class="ghost" id="pv-next-btn" type="button" aria-label="Next section">→</button>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const channelName = "ecas-participant-sync";
+      const statusEl = document.getElementById("pv-status-badge");
+      const titleEl = document.getElementById("pv-item-title");
+      const countEl = document.getElementById("pv-progress-count");
+      const fillEl = document.getElementById("pv-progress-fill");
+      const card = document.getElementById("pv-naming-card");
+      const progressRow = card ? card.querySelector(".progress-row") : null;
+      const eyebrowEl = document.querySelector("#pv-naming-card .eyebrow");
+      const instructionsEl = document.getElementById("pv-instructions");
+      const prevBtn = document.getElementById("pv-prev-btn");
+      const nextBtn = document.getElementById("pv-next-btn");
+      const statusNote = { textContent: "" };
+      let lastPayload = null;
+      const initSection = (sectionName, payload) => {
+        if (payload) {
+          applySection(sectionName, payload);
+          return;
+        }
+        applySection(sectionName, {
+          naming: {
+            title: titleEl.textContent || "Item 1 of 1",
+            progressText: countEl.textContent || "1 / 1",
+            progressPercent: parseInt(fillEl.style.width || "0", 10) || 0,
+            imageSrc: imgEl.getAttribute("src") || "",
+            imageAlt: imgEl.getAttribute("alt") || "Naming prompt",
+            statusLabel: statusEl ? statusEl.textContent : "Idle",
+            statusClass: statusEl ? statusEl.className : "status-badge"
+          },
+          comprehension: {
+            progressText: countEl.textContent || "1 / 8",
+            images: []
+          },
+          immediateRecall: {
+            title: "Immediate recall after story",
+            instructions:
+              "Instructions: Listen carefully to the story that's going to be presented to you and recall everything they remember after"
+          }
+        });
+      };
+      const imgEl = document.getElementById("pv-prompt-image");
+      const sections = [
+        "naming",
+        "comprehension",
+        "immediate-recall",
+        "spelling",
+        "fluency-s",
+        "digits",
+        "alternation",
+        "fluency-t",
+        "dots",
+        "cubes",
+        "numberloc",
+        "sentences",
+        "social-a",
+        "social-b",
+        "delayed-recall",
+        "delayed-recognition"
+      ];
+      let manualIndex = null;
+      let manualUntil = 0;
+      let lastSection = "naming";
+      imgEl.addEventListener("error", () => {
+        statusNote.textContent = "Image failed to load. Check that the proctor page is running with the correct URL.";
+      });
+
+      const applySection = (section, payload) => {
+        if (!payload) return;
+        statusNote.textContent = "";
+        lastSection = section;
+        if (section === "comprehension") {
+          if (eyebrowEl) eyebrowEl.textContent = "2. Language - Comprehension";
+          if (titleEl) titleEl.textContent = "Which picture matches?";
+          if (payload.comprehension?.progressText) countEl.textContent = payload.comprehension.progressText;
+          fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) instructionsEl.classList.add("hidden");
+          imgEl.removeAttribute("src");
+          const grid = document.getElementById("pv-comp-grid");
+          if (grid) {
+            grid.innerHTML = "";
+            (payload.comprehension?.images || []).forEach(item => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "image-option";
+              const img = document.createElement("img");
+              img.src = new URL(item.src, window.location.href).toString();
+              img.alt = item.label || "";
+              btn.appendChild(img);
+              grid.appendChild(btn);
+            });
+          }
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.remove("hidden");
+        } else if (section === "immediate-recall") {
+          if (eyebrowEl) eyebrowEl.textContent = "3. Memory - Immediate Recall";
+          if (titleEl) titleEl.textContent = payload.immediateRecall?.title || "Immediate recall after story";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.immediateRecall?.instructions ||
+              "Instructions: Listen carefully to the story that's going to be presented to you and recall everything they remember after";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "spelling") {
+          if (eyebrowEl) eyebrowEl.textContent = "4. Language - Spelling";
+          if (titleEl) titleEl.textContent = payload.spelling?.title || "4. Language - Spelling";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.spelling?.instructions ||
+              "Instructions: You will be given different words - please spell them aloud to the best of your ability.";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "fluency-s") {
+          if (eyebrowEl) eyebrowEl.textContent = "5. Verbal Fluency - Letter S";
+          if (titleEl) titleEl.textContent = payload.fluencyS?.title || "5. Verbal Fluency - Letter S";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.fluencyS?.instructions ||
+              "Instructions: You will be given different words - list as many words that start with an S as possible.";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "digits") {
+          if (eyebrowEl) eyebrowEl.textContent = "6. Reverse the spoken numbers";
+          if (titleEl) titleEl.textContent = payload.digits?.title || "6. Reverse the spoken numbers";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.digits?.instructions ||
+              "Instructions: Numbers will be read aloud to you. Repeat them in reverse order.";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "alternation") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 7: Number/letter switching";
+          if (titleEl) titleEl.textContent = payload.alternation?.title || "Section 7: Number/letter switching";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.alternation?.instructions ||
+              "Instructions: Alternating between numbers and letters, in order, without skipping any until told to stop.";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "fluency-t") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 8: Verbal Fluency - Letter T";
+          if (titleEl) titleEl.textContent = payload.fluencyT?.title || "Section 8: Verbal Fluency - Letter T";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.fluencyT?.instructions ||
+              "Instructions: List as many words that start with an T and are four letters as possible.";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "dots") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 9: Count dots in each box";
+          if (titleEl) titleEl.textContent = payload.dots?.title || "Section 9: Count dots in each box";
+          if (countEl) countEl.textContent = payload.dots?.progressText || "";
+          if (typeof payload.dots?.progressPercent === "number") {
+            fillEl.style.width = `${payload.dots.progressPercent}%`;
+          }
+          if (progressRow) progressRow.classList.remove("hidden");
+          if (instructionsEl) instructionsEl.classList.add("hidden");
+          if (payload.dots?.imageSrc) {
+            imgEl.src = new URL(payload.dots.imageSrc, window.location.href).toString();
+            imgEl.alt = payload.dots.imageAlt || "Dot counting prompt";
+          } else {
+            imgEl.removeAttribute("src");
+          }
+          document.querySelector(".image-frame").classList.remove("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "cubes") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 10: Count cubes in each box";
+          if (titleEl) titleEl.textContent = payload.cubes?.title || "Section 10: Count cubes in each box";
+          if (countEl) countEl.textContent = payload.cubes?.progressText || "";
+          if (typeof payload.cubes?.progressPercent === "number") {
+            fillEl.style.width = `${payload.cubes.progressPercent}%`;
+          }
+          if (progressRow) progressRow.classList.remove("hidden");
+          if (instructionsEl) instructionsEl.classList.add("hidden");
+          if (payload.cubes?.imageSrc) {
+            imgEl.src = new URL(payload.cubes.imageSrc, window.location.href).toString();
+            imgEl.alt = payload.cubes.imageAlt || "Cube counting prompt";
+          } else {
+            imgEl.removeAttribute("src");
+          }
+          document.querySelector(".image-frame").classList.remove("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "numberloc") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 11: Which number has the dot?";
+          if (titleEl) titleEl.textContent = payload.numberloc?.title || "Section 11: Which number has the dot?";
+          if (countEl) countEl.textContent = payload.numberloc?.progressText || "";
+          if (typeof payload.numberloc?.progressPercent === "number") {
+            fillEl.style.width = `${payload.numberloc.progressPercent}%`;
+          }
+          if (progressRow) progressRow.classList.remove("hidden");
+          if (instructionsEl) instructionsEl.classList.add("hidden");
+          if (payload.numberloc?.imageSrc) {
+            imgEl.src = new URL(payload.numberloc.imageSrc, window.location.href).toString();
+            imgEl.alt = payload.numberloc.imageAlt || "Number location prompt";
+          } else {
+            imgEl.removeAttribute("src");
+          }
+          document.querySelector(".image-frame").classList.remove("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "sentences") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 12: Sentence Completion";
+          if (titleEl) titleEl.textContent = payload.sentences?.title || "Section 12: Sentence Completion";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.sentences?.instructions ||
+              "You will be given a parital sentence, please complete with a word that doesn't make sense.";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "social-a") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 13 (Part A): Social Cognition";
+          if (titleEl) titleEl.textContent = payload.socialA?.title || "Section 13 (Part A): Social Cognition";
+          if (countEl) countEl.textContent = payload.socialA?.progressText || "";
+          if (typeof payload.socialA?.progressPercent === "number") {
+            fillEl.style.width = `${payload.socialA.progressPercent}%`;
+          }
+          if (progressRow) progressRow.classList.remove("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent = payload.socialA?.instructions || "Please choose which image you like best.";
+            instructionsEl.classList.remove("hidden");
+          }
+          const grid = document.getElementById("pv-comp-grid");
+          if (grid) {
+            grid.classList.remove("fluency-raw-grid");
+            grid.classList.add("social-grid");
+            grid.innerHTML = "";
+            (payload.socialA?.images || []).forEach((src, idx) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "social-option";
+              if (payload.socialA?.selectedIndex === idx) {
+                btn.classList.add("selected");
+              }
+              const img = document.createElement("img");
+              img.src = new URL(src, window.location.href).toString();
+              img.alt = "";
+              btn.appendChild(img);
+              grid.appendChild(btn);
+            });
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.remove("hidden");
+        } else if (section === "social-b") {
+          if (eyebrowEl) eyebrowEl.textContent = "Section 13 (Part B): Social Cognition";
+          if (titleEl) titleEl.textContent = payload.socialB?.title || "Section 13 (Part B): Social Cognition";
+          if (countEl) countEl.textContent = payload.socialB?.progressText || "";
+          if (typeof payload.socialB?.progressPercent === "number") {
+            fillEl.style.width = `${payload.socialB.progressPercent}%`;
+          }
+          if (progressRow) progressRow.classList.remove("hidden");
+          if (instructionsEl) instructionsEl.classList.add("hidden");
+          const grid = document.getElementById("pv-comp-grid");
+          if (grid) {
+            grid.classList.remove("fluency-raw-grid");
+            grid.classList.add("social-b-grid");
+            grid.innerHTML = "";
+            (payload.socialB?.images || []).forEach((src, idx) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "social-option";
+              if (payload.socialB?.selectedIndex === idx) {
+                btn.classList.add("selected");
+              }
+              const img = document.createElement("img");
+              img.src = new URL(src, window.location.href).toString();
+              img.alt = "";
+              btn.appendChild(img);
+              grid.appendChild(btn);
+            });
+            const face = document.createElement("img");
+            face.className = "social-b-face";
+            if (payload.socialB?.face) {
+              face.src = new URL(payload.socialB.face, window.location.href).toString();
+              face.alt = "";
+              grid.appendChild(face);
+            }
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.remove("hidden");
+        } else if (section === "delayed-recall") {
+          if (eyebrowEl) eyebrowEl.textContent = "14. Memory - Delayed Recall";
+          if (titleEl) titleEl.textContent = payload.delayedRecall?.title || "14. Memory - Delayed Recall";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.delayedRecall?.instructions ||
+              "Recall the story again from earlier and state everything you can remember";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else if (section === "delayed-recognition") {
+          if (eyebrowEl) eyebrowEl.textContent = "15. Memory - Delayed Recognition";
+          if (titleEl) titleEl.textContent = payload.delayedRecognition?.title || "15. Memory - Delayed Recognition";
+          if (countEl) countEl.textContent = "";
+          if (fillEl) fillEl.style.width = "0%";
+          if (progressRow) progressRow.classList.add("hidden");
+          if (instructionsEl) {
+            instructionsEl.textContent =
+              payload.delayedRecognition?.instructions ||
+              "Please answer the following True or False questions about the story";
+            instructionsEl.classList.remove("hidden");
+          }
+          imgEl.removeAttribute("src");
+          document.querySelector(".image-frame").classList.add("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        } else {
+          if (eyebrowEl) eyebrowEl.textContent = "1. Language - Naming";
+          if (payload.naming?.title) titleEl.textContent = payload.naming.title;
+          if (payload.naming?.progressText) countEl.textContent = payload.naming.progressText;
+          if (typeof payload.naming?.progressPercent === "number") {
+            fillEl.style.width = `${payload.naming.progressPercent}%`;
+          }
+          if (progressRow) progressRow.classList.remove("hidden");
+          if (instructionsEl) instructionsEl.classList.add("hidden");
+          if (payload.naming?.imageSrc) {
+            try {
+              imgEl.src = new URL(payload.naming.imageSrc, window.location.href).toString();
+            } catch (err) {
+              imgEl.src = payload.naming.imageSrc;
+            }
+            imgEl.alt = payload.naming.imageAlt || "Naming prompt";
+          } else {
+            imgEl.removeAttribute("src");
+          }
+          document.querySelector(".image-frame").classList.remove("hidden");
+          document.getElementById("pv-comp-grid").classList.add("hidden");
+        }
+        if (card && card.dataset) {
+          card.dataset.lastSync = "";
+        }
+        if (statusEl) {
+          statusEl.textContent = payload.naming?.statusLabel || "Idle";
+          statusEl.className = payload.naming?.statusClass || "status-badge";
+        }
+      };
+
+      const renderFluencyRaw = payload => {
+        if (!payload || !Array.isArray(payload.words)) return;
+        if (eyebrowEl) eyebrowEl.textContent = payload.title || "5. Verbal Fluency - Letter S";
+        if (titleEl) titleEl.textContent = payload.title || "Verbal Fluency - Letter S";
+        if (countEl) countEl.textContent = "";
+        if (fillEl) fillEl.style.width = "0%";
+        if (progressRow) progressRow.classList.add("hidden");
+        if (instructionsEl) instructionsEl.classList.add("hidden");
+        const grid = document.getElementById("pv-comp-grid");
+        if (grid) {
+          grid.innerHTML = payload.words.map(word => `<div class="fluency-raw-pill">${word}</div>`).join("");
+          grid.classList.remove("hidden");
+          grid.classList.add("fluency-raw-grid");
+        }
+        document.querySelector(".image-frame").classList.add("hidden");
+      };
+
+      const updateUI = payload => {
+        if (!payload) return;
+        lastPayload = payload;
+        const section = payload.section || "naming";
+        if (manualIndex !== null && Date.now() > manualUntil) {
+          manualIndex = null;
+        }
+        const renderSection = manualIndex !== null ? sections[manualIndex] : section;
+        applySection(renderSection, payload);
+      };
+
+      // Button handlers are wired below after cache helpers.
+
+      const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(channelName) : null;
+      const fluencyChannelKey = `${channelName}-fluency`;
+      if (channel) {
+        channel.onmessage = event => {
+          if (event.data && event.data.type === "naming-sync") {
+            updateUI(event.data.payload);
+          }
+          if (event.data && event.data.type === "fluency-raw") {
+            renderFluencyRaw(event.data.payload);
+          }
+        };
+      } else {
+        window.addEventListener("storage", event => {
+          if (!event.newValue) return;
+          try {
+            const data = JSON.parse(event.newValue);
+            if (event.key === channelName && data.type === "naming-sync") updateUI(data.payload);
+            if (event.key === fluencyChannelKey && data.type === "fluency-raw") renderFluencyRaw(data.payload);
+          } catch (err) {}
+        });
+      }
+
+      try {
+        const cached = localStorage.getItem(channelName);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.type === "naming-sync") {
+            updateUI(parsed.payload);
+          }
+        }
+      } catch (err) {}
+      try {
+        const cachedFluency = localStorage.getItem(fluencyChannelKey);
+        if (cachedFluency) {
+          const parsed = JSON.parse(cachedFluency);
+          if (parsed && parsed.type === "fluency-raw") {
+            renderFluencyRaw(parsed.payload);
+          }
+        }
+      } catch (err) {}
+
+      const getLastPayload = () => {
+        if (lastPayload) {
+          return lastPayload;
+        }
+        try {
+          const cached = localStorage.getItem(channelName);
+          if (!cached) return null;
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.type === "naming-sync") {
+            return parsed.payload;
+          }
+        } catch (err) {}
+        return null;
+      };
+
+      if (prevBtn && nextBtn) {
+        prevBtn.addEventListener("click", () => {
+          if (manualIndex === null) {
+            manualIndex = Math.max(0, sections.indexOf(lastSection));
+          }
+          manualIndex = Math.max(0, manualIndex - 1);
+          manualUntil = Date.now() + 10000;
+          const payload = getLastPayload();
+          if (payload) {
+            initSection(sections[manualIndex], payload);
+          } else {
+            initSection(sections[manualIndex]);
+          }
+        });
+        nextBtn.addEventListener("click", () => {
+          if (manualIndex === null) {
+            manualIndex = Math.max(0, sections.indexOf(lastSection));
+          }
+          manualIndex = Math.min(sections.length - 1, manualIndex + 1);
+          manualUntil = Date.now() + 10000;
+          const payload = getLastPayload();
+          if (payload) {
+            initSection(sections[manualIndex], payload);
+          } else {
+            initSection(sections[manualIndex]);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

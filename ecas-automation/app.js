@@ -503,8 +503,12 @@ const dom = {
   scoreVisuoCubes: document.getElementById("score-visuo-cubes"),
   scoreVisuoNumberloc: document.getElementById("score-visuo-numberloc"),
   scoreAlsNonspecific: document.getElementById("score-als-nonspecific"),
-  scoreEcasTotal: document.getElementById("score-ecas-total")
+  scoreEcasTotal: document.getElementById("score-ecas-total"),
+  participantViewBtn: document.getElementById("participant-view-btn")
 };
+
+const participantChannelName = "ecas-participant-sync";
+const participantChannel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(participantChannelName) : null;
 
 const itemStates = items.map(() => ({
   entries: [],
@@ -898,6 +902,18 @@ function bindControls() {
       const transcript = getStoryTranscript();
       const result = keywordScoreStory(transcript);
       applyStoryScore(result);
+    });
+  }
+  if (dom.participantViewBtn) {
+    dom.participantViewBtn.addEventListener("click", () => {
+      const url = new URL("participant.html", window.location.href);
+      const win = window.open(url.toString(), "_blank");
+      if (!win) {
+        alert("Popup blocked. Please allow pop-ups for Participant View.");
+        return;
+      }
+      syncParticipantView();
+      window.setTimeout(syncParticipantView, 250);
     });
   }
   if (dom.delayedStoryStartBtn) {
@@ -4011,6 +4027,223 @@ function getRecognitionScore(correctCount) {
   return 0;
 }
 
+function syncParticipantView() {
+  const payload = buildParticipantPayload();
+  if (participantChannel) {
+    participantChannel.postMessage({ type: "naming-sync", payload });
+  } else {
+    try {
+      localStorage.setItem(participantChannelName, JSON.stringify({ type: "naming-sync", payload }));
+    } catch (err) {}
+  }
+}
+
+function buildParticipantPayload() {
+  const total = items.length || 1;
+  const completed = itemStates.filter(state => state.status === "completed").length;
+  const percent = Math.round((completed / total) * 100);
+  const status = itemStates[activeIndex]?.status || "pending";
+  const statusLabel =
+    status === "listening" ? "Listening" : status === "finishing" ? "Finishing" : status === "completed" ? "Completed" : "Idle";
+  const statusClass =
+    status === "completed"
+      ? "status-badge completed"
+      : status === "listening"
+      ? "status-badge listening"
+      : "status-badge";
+  const item = items[activeIndex] || {};
+  const rawSrc = item.src || dom.image?.getAttribute("src") || "";
+  const imageSrc = rawSrc ? new URL(rawSrc, window.location.href).toString() : "";
+  const comprehensionImages = items.map(item => ({
+    id: item.id,
+    src: item.src ? new URL(item.src, window.location.href).toString() : "",
+    label: item.label
+  }));
+  let section = "naming";
+  if (namingSessionEnded) {
+    section = "comprehension";
+  }
+  if (comprehensionSessionEnded) {
+    section = "immediate-recall";
+  }
+  const spellingStarted =
+    spellingStates.some(state => state.status === "listening") ||
+    spellingStates.some(state => (state.entries && state.entries.length) || (state.typedAnswer || "").trim());
+  if (spellingStarted) {
+    section = "spelling";
+  }
+  const fluencyStarted =
+    fluencyState.status === "listening" ||
+    (fluencyState.entries && fluencyState.entries.length) ||
+    (fluencyState.tokens && fluencyState.tokens.length) ||
+    (dom.fluencyManualInput && dom.fluencyManualInput.value.trim());
+  if (fluencyStarted) {
+    section = "fluency-s";
+  }
+  const digitsStarted =
+    digitStates.some(state => state.status === "listening") ||
+    digitStates.some(state => (state.entries && state.entries.length) || (state.typedAnswer || "").trim());
+  if (digitsStarted) {
+    section = "digits";
+  }
+  const alternationStarted =
+    alternationStates.some(state => state.status === "listening") ||
+    alternationStates.some(state => (state.entries && state.entries.length) || (state.typedAnswer || "").trim());
+  if (alternationStarted) {
+    section = "alternation";
+  }
+  const fluencyTStarted =
+    fluencyTState.status === "listening" ||
+    (fluencyTState.entries && fluencyTState.entries.length) ||
+    (fluencyTState.tokens && fluencyTState.tokens.length) ||
+    (dom.fluencyTManualInput && dom.fluencyTManualInput.value.trim());
+  if (fluencyTStarted) {
+    section = "fluency-t";
+  }
+  const dotsStarted =
+    dotsStates.some(state => state.status === "listening") ||
+    dotsStates.some(state => (state.entries && state.entries.length) || (state.typedAnswer || "").trim());
+  if (dotsStarted) {
+    section = "dots";
+  }
+  const cubesStarted =
+    cubesStates.some(state => state.status === "listening") ||
+    cubesStates.some(state => (state.entries && state.entries.length) || (state.typedAnswer || "").trim());
+  if (cubesStarted) {
+    section = "cubes";
+  }
+  const numberlocStarted =
+    numberlocStates.some(state => state.status === "listening") ||
+    numberlocStates.some(state => (state.entries && state.entries.length) || (state.typedAnswer || "").trim());
+  if (numberlocStarted) {
+    section = "numberloc";
+  }
+  const sentenceStarted =
+    sentenceState.status === "listening" ||
+    (sentenceState.responses && sentenceState.responses.length) ||
+    (dom.sentenceInputs && Array.from(dom.sentenceInputs).some(input => (input.value || "").trim()));
+  if (sentenceStarted) {
+    section = "sentences";
+  }
+  const socialStarted = socialStates.some(state => state.selectedIndex !== null);
+  const socialCompleted = socialStates.every(state => state.selectedIndex !== null);
+  const socialBStarted = socialBStates.some(state => state.selectedIndex !== null);
+  const socialBCompleted = socialBStates.every(state => state.selectedIndex !== null);
+  if (socialStarted || socialBStarted) {
+    if (socialBCompleted) {
+      section = "delayed-recall";
+    } else if (socialBStarted || socialCompleted) {
+      section = "social-b";
+    } else {
+      section = "social-a";
+    }
+  }
+  const delayedRecognitionStarted =
+    sessionTimers.get("delayed-recognition-card")?.elapsedMs > 0 ||
+    delayedRecognitionStates.some(state => state.answer !== null);
+  if (delayedRecognitionStarted) {
+    section = "delayed-recognition";
+  }
+  return {
+    section,
+    naming: {
+      title: `Item ${activeIndex + 1} of ${total}`,
+      progressText: `${activeIndex + 1} / ${total}`,
+      progressPercent: percent,
+      imageSrc,
+      imageAlt: item.label || dom.image?.getAttribute("alt") || "Naming prompt",
+      statusLabel,
+      statusClass
+    },
+    comprehension: {
+      progressText: `${compIndex + 1} / ${comprehensionPrompts.length}`,
+      images: comprehensionImages
+    },
+    immediateRecall: {
+      title: "Immediate recall after story",
+      instructions:
+        "Instructions: Listen carefully to the story that's going to be presented to you and recall everything they remember after"
+    },
+    spelling: {
+      title: "4. Language - Spelling",
+      instructions: "Instructions: You will be given different words - please spell them aloud to the best of your ability."
+    },
+    fluencyS: {
+      title: "5. Verbal Fluency - Letter S",
+      instructions:
+        "Instructions: You will be given different words - list as many words that start with an S as possible."
+    },
+    digits: {
+      title: "6. Reverse the spoken numbers",
+      instructions: "Instructions: Numbers will be read aloud to you. Repeat them in reverse order."
+    },
+    alternation: {
+      title: "Section 7: Number/letter switching",
+      instructions: "Instructions: Alternating between numbers and letters, in order, without skipping any until told to stop."
+    },
+    fluencyT: {
+      title: "Section 8: Verbal Fluency - Letter T",
+      instructions: "Instructions: List as many words that start with an T and are four letters as possible."
+    },
+    dots: {
+      title: "Section 9: Count dots in each box",
+      imageSrc: dom.dotsImage?.getAttribute("src")
+        ? new URL(dom.dotsImage.getAttribute("src"), window.location.href).toString()
+        : "",
+      imageAlt: dom.dotsImage?.getAttribute("alt") || "Dot counting prompt",
+      progressText: `${dotsIndex + 1} / ${dotTrials.length}`,
+      progressPercent: Math.round(((dotsIndex + 1) / dotTrials.length) * 100)
+    },
+    cubes: {
+      title: "Section 10: Count cubes in each box",
+      imageSrc: dom.cubesImage?.getAttribute("src")
+        ? new URL(dom.cubesImage.getAttribute("src"), window.location.href).toString()
+        : "",
+      imageAlt: dom.cubesImage?.getAttribute("alt") || "Cube counting prompt",
+      progressText: `${cubesIndex + 1} / ${cubeTrials.length}`,
+      progressPercent: Math.round(((cubesIndex + 1) / cubeTrials.length) * 100)
+    },
+    numberloc: {
+      title: "Section 11: Which number has the dot?",
+      imageSrc: dom.numberlocImage?.getAttribute("src")
+        ? new URL(dom.numberlocImage.getAttribute("src"), window.location.href).toString()
+        : "",
+      imageAlt: dom.numberlocImage?.getAttribute("alt") || "Number location prompt",
+      progressText: `${numberlocIndex + 1} / ${numberLocTrials.length}`,
+      progressPercent: Math.round(((numberlocIndex + 1) / numberLocTrials.length) * 100)
+    },
+    sentences: {
+      title: "Section 12: Sentence Completion",
+      instructions: "You will be given a parital sentence, please complete with a word that doesn't make sense."
+    },
+    socialA: {
+      title: "Section 13 (Part A): Social Cognition",
+      instructions: "Please choose which image you like best.",
+      images: socialTrials[socialIndex]?.images || [],
+      selectedIndex: socialStates[socialIndex]?.selectedIndex ?? null,
+      progressText: `${socialIndex + 1} / ${socialTrials.length}`,
+      progressPercent: Math.round(((socialIndex + 1) / socialTrials.length) * 100)
+    },
+    socialB: {
+      title: "Section 13 (Part B): Social Cognition",
+      images: socialBTrials[socialBIndex]?.images || [],
+      face: socialBTrials[socialBIndex]?.face || "",
+      selectedIndex: socialBStates[socialBIndex]?.selectedIndex ?? null,
+      progressText: `${socialBIndex + 1} / ${socialBTrials.length}`,
+      progressPercent: Math.round(((socialBIndex + 1) / socialBTrials.length) * 100)
+    },
+    delayedRecall: {
+      title: "14. Memory - Delayed Recall",
+      instructions: "Recall the story again from earlier and state everything you can remember"
+    },
+    delayedRecognition: {
+      title: "15. Memory - Delayed Recognition",
+      instructions: "Please answer the following True or False questions about the story"
+    }
+  };
+}
+
+
 function keywordScoreStory(transcript) {
   const text = (transcript || "").toLowerCase();
   const has = phrase => text.includes(phrase);
@@ -4105,7 +4338,7 @@ function handleRecognitionResult(event) {
         continue;
       }
       const transcript = result[0].transcript || "";
-      const tokens = tokenize(transcript);
+      const tokens = tokenizeFluency(transcript);
       state.entries.push({
         text: transcript.trim(),
         source: "Voice",
@@ -4137,7 +4370,7 @@ function handleRecognitionResult(event) {
         continue;
       }
       const transcript = result[0].transcript || "";
-      const tokens = tokenize(transcript);
+      const tokens = tokenizeFluency(transcript);
       state.entries.push({
         text: transcript.trim(),
         source: "Voice",
@@ -5209,7 +5442,7 @@ function applyFluencyEntryEdit(state, entryIndex, rawValue, validator) {
   if (entryIndex < 0 || entryIndex >= state.tokens.length) {
     return;
   }
-  const tokens = tokenize(rawValue);
+  const tokens = tokenizeFluency(rawValue);
   if (!tokens.length) {
     state.tokens.splice(entryIndex, 1);
     state.entries.splice(entryIndex, 1);
@@ -5227,7 +5460,7 @@ function applyFluencyEntryEdit(state, entryIndex, rawValue, validator) {
 }
 
 function addFluencyTokens(state, rawValue, validator) {
-  const tokens = tokenize(rawValue);
+  const tokens = tokenizeFluency(rawValue);
   if (!tokens.length) {
     return;
   }
@@ -5314,6 +5547,7 @@ function updateUI() {
   checkDotsCompletion();
   checkCubesCompletion();
   checkNumberLocCompletion();
+  syncParticipantView();
   scheduleSessionSave();
 }
 
@@ -5673,31 +5907,16 @@ function renderFluencyNotes() {
 
 function openRawListWindow(state, title) {
   const rawWords = state.entries.map(entry => entry.word).filter(Boolean);
-  const listHtml = rawWords.map(word => `<li>${escapeHtml(word)}</li>`).join("");
-  const content = `
-    <!doctype html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(title)} - Raw List</title>
-        <style>
-          body { font-family: "Inter", "Segoe UI", sans-serif; padding: 24px; background: #f8fafc; }
-          ol { font-size: 22px; line-height: 1.6; }
-        </style>
-      </head>
-      <body>
-        <ol>${listHtml || "<li>No words captured yet.</li>"}</ol>
-      </body>
-    </html>
-  `;
-  const win = window.open("", "_blank");
-  if (!win) {
-    alert("Popup blocked. Allow popups to open the raw list.");
-    return;
+  if (participantChannel) {
+    participantChannel.postMessage({ type: "fluency-raw", payload: { words: rawWords, title } });
+  } else {
+    try {
+      localStorage.setItem(
+        `${participantChannelName}-fluency`,
+        JSON.stringify({ type: "fluency-raw", payload: { words: rawWords, title } })
+      );
+    } catch (err) {}
   }
-  win.document.open();
-  win.document.write(content);
-  win.document.close();
 }
 
 function escapeHtml(value = "") {
@@ -6803,6 +7022,7 @@ function updateCubesUI() {
   renderCubesLive();
   renderCubesMatch();
   renderCubesLog();
+  syncParticipantView();
 }
 
 function renderCubesLive() {
@@ -6975,6 +7195,7 @@ function updateNumberLocUI() {
   renderNumberLocLive();
   renderNumberLocMatch();
   renderNumberLocLog();
+  syncParticipantView();
 }
 
 function renderNumberLocLive() {
@@ -7093,6 +7314,7 @@ function updateSocialUI() {
   renderSocialGrid();
   renderSocialLog();
   scheduleSessionSave();
+  syncParticipantView();
 }
 
 function renderSocialGrid() {
@@ -7213,6 +7435,7 @@ function updateSocialBUI() {
   renderSocialBLog();
   updateSocialBScore();
   scheduleSessionSave();
+  syncParticipantView();
 }
 
 function renderSocialBGrid() {
@@ -7646,6 +7869,7 @@ function updateDotsUI() {
   renderDotsLive();
   renderDotsMatch();
   renderDotsLog();
+  syncParticipantView();
 }
 
 function renderDotsLive() {
@@ -7997,6 +8221,21 @@ function tokenize(text = "") {
     .split(/\s+/)
     .map(token => canonicalize(token))
     .filter(Boolean);
+}
+
+function tokenizeFluency(text = "") {
+  const cleaned = text.replace(/[^a-zA-Z\s]/g, " ");
+  return cleaned
+    .split(/\s+/)
+    .map(token => normalizeFluencyToken(token))
+    .filter(Boolean);
+}
+
+function normalizeFluencyToken(word = "") {
+  return word
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
 }
 
 function buildSpelledCandidate(tokens = []) {
