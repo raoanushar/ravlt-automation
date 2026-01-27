@@ -9,6 +9,27 @@ The frontend should point window.STORY_SCORER_URL to http://127.0.0.1:5000/score
 import json
 import logging
 import os
+
+
+def load_env_file(path):
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                    value = value[1:-1]
+                os.environ.setdefault(key, value)
+    except Exception as exc:
+        logging.warning("Failed to load .env file %s: %s", path, exc)
+
+
 from flask import Flask, request, jsonify, make_response, send_from_directory
 from openai import OpenAI
 from pydantic import BaseModel
@@ -20,6 +41,9 @@ except ImportError:
     pass
 
 logging.basicConfig(level=logging.INFO, format="gg %(asctime)s %(levelname)s %(message)s")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_env_file(os.path.join(BASE_DIR, ".env"))
 
 
 class StoryScore(BaseModel):
@@ -146,7 +170,6 @@ api_key = os.getenv("OPENAI_API_KEY", "")
 client = OpenAI(api_key=api_key)
 logging.info("Backend started. OPENAI_API_KEY present: %s", bool(api_key))
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "ecas-automation")
 
 app = Flask(__name__)
@@ -155,6 +178,40 @@ app = Flask(__name__)
 @app.route("/")
 def index():
     return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/config.js")
+def config_js():
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_anon = os.getenv("SUPABASE_ANON_KEY", "")
+    story_url = os.getenv("STORY_SCORER_URL", "")
+    fluency_url = os.getenv("FLUENCY_SCORER_URL", "")
+    fluency_t_url = os.getenv("FLUENCY_T_SCORER_URL", "")
+    sentence_url = os.getenv("SENTENCE_SCORER_URL", "")
+    js = (
+        "window.SUPABASE_URL = "
+        + json.dumps(supabase_url)
+        + ";\nwindow.SUPABASE_ANON_KEY = "
+        + json.dumps(supabase_anon)
+        + ";\nwindow.STORY_SCORER_URL = "
+        + json.dumps(story_url or "/score-story")
+        + ";\nwindow.FLUENCY_SCORER_URL = "
+        + json.dumps(fluency_url or "/score-fluency")
+        + ";\nwindow.FLUENCY_T_SCORER_URL = "
+        + json.dumps(fluency_t_url or "/score-fluency-t")
+        + ";\nwindow.SENTENCE_SCORER_URL = "
+        + json.dumps(sentence_url or "/score-sentences")
+        + ";\n"
+    )
+    response = make_response(js)
+    response.headers["Content-Type"] = "application/javascript"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return ("", 204)
 
 
 @app.route("/<path:filename>")

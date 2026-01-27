@@ -248,14 +248,23 @@ const PROMPT_STORAGE_KEYS = {
 
 const PROMPT_VERSION_KEY = "ecas.prompt.defaultsVersion";
 
-const SUPABASE_URL = window.SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
+const SUPABASE_URL_RAW = window.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY_RAW = window.SUPABASE_ANON_KEY || "";
+const SUPABASE_URL =
+  typeof SUPABASE_URL_RAW === "string" && SUPABASE_URL_RAW.trim().startsWith("${") ? "" : SUPABASE_URL_RAW;
+const SUPABASE_ANON_KEY =
+  typeof SUPABASE_ANON_KEY_RAW === "string" && SUPABASE_ANON_KEY_RAW.trim().startsWith("${")
+    ? ""
+    : SUPABASE_ANON_KEY_RAW;
 const supabaseClient =
   window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
+let supabaseMissingNoticeShown = false;
 const SESSION_ID_KEY = "ecas.session.id";
 const SESSION_META_KEY = "ecas.session.meta";
+let autosaveFingerprint = "";
+let autosaveIntervalId = null;
 
 const sentenceState = {
   index: 0,
@@ -773,6 +782,7 @@ function init() {
   setupSentenceScoreEditing();
   setupSessionTimers();
   updateUI();
+  startAutoSaveWatcher();
 }
 
 function bindControls() {
@@ -1339,6 +1349,7 @@ function setupSessionMetadata() {
       if (!window.confirm("Start a new session? This will reset all data on the page.")) {
         return;
       }
+      resetSessionStorage();
       resetAllTests();
       const nextId = createSessionId();
       localStorage.setItem(SESSION_ID_KEY, nextId);
@@ -1352,6 +1363,9 @@ function setupSessionMetadata() {
       if (dom.sessionDate) {
         dom.sessionDate.value = new Date().toISOString().slice(0, 10);
       }
+      if (dom.sessionLoadId) {
+        dom.sessionLoadId.value = "";
+      }
       storeSessionMeta(getSessionMetaFromInputs());
       scheduleSessionSave(true);
     });
@@ -1359,16 +1373,6 @@ function setupSessionMetadata() {
   if (dom.sessionSaveBtn) {
     dom.sessionSaveBtn.addEventListener("click", () => {
       scheduleSessionSave(true);
-    });
-  }
-  if (dom.sessionLoadBtn) {
-    dom.sessionLoadBtn.addEventListener("click", () => {
-      const id = dom.sessionLoadId ? dom.sessionLoadId.value.trim() : "";
-      if (!id) {
-        alert("Enter a session ID to load.");
-        return;
-      }
-      loadSessionById(id);
     });
   }
   if (dom.sessionResetBtn) {
@@ -1431,6 +1435,10 @@ function getSessionMetaFromInputs() {
 
 function scheduleSessionSave(forceImmediate = false) {
   if (!supabaseClient) {
+    if (!supabaseMissingNoticeShown) {
+      setSessionSaveStatus("Supabase not configured");
+      supabaseMissingNoticeShown = true;
+    }
     return;
   }
   if (sessionSaveTimer) {
@@ -1515,43 +1523,236 @@ function setSessionSaveStatus(text) {
   }, 2000);
 }
 
+function resetSessionStorage() {
+  if (sessionSaveTimer) {
+    window.clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = null;
+  }
+  sessionSaveInFlight = false;
+  autosaveFingerprint = "";
+  localStorage.removeItem(SESSION_ID_KEY);
+  localStorage.removeItem(SESSION_META_KEY);
+  try {
+    localStorage.removeItem(participantChannelName);
+    localStorage.removeItem(`${participantChannelName}-fluency`);
+  } catch (err) {}
+  sessionTimers.forEach((_, sectionId) => resetSessionTimer(sectionId));
+  if (dom.sessionSaveStatus) {
+    dom.sessionSaveStatus.textContent = "";
+  }
+}
+
+function normalizeTimersForFingerprint(timers) {
+  const result = {};
+  const keys = timers ? Object.keys(timers).sort() : [];
+  keys.forEach(key => {
+    const timer = timers[key] || {};
+    const elapsedMs =
+      typeof timer.elapsedMs === "number" && Number.isFinite(timer.elapsedMs)
+        ? Math.round(timer.elapsedMs / 1000) * 1000
+        : 0;
+    result[key] = { elapsedMs, running: Boolean(timer.running) };
+  });
+  return result;
+}
+
+function buildAutosaveFingerprint() {
+  if (!supabaseClient) {
+    return "";
+  }
+  const meta = getSessionMetaFromInputs();
+  const payload = buildSessionPayload();
+  const normalized = {
+    sessionId: getOrCreateSessionId(),
+    meta,
+    prompts: payload.prompts,
+    scores: payload.scores,
+    transcripts: payload.transcripts,
+    rationales: payload.rationales,
+    timers: normalizeTimersForFingerprint(payload.timers),
+    data: payload.data,
+    naming_data: payload.naming_data,
+    comprehension_data: payload.comprehension_data,
+    spelling_data: payload.spelling_data,
+    story_data: payload.story_data,
+    delayed_story_data: payload.delayed_story_data,
+    fluency_data: payload.fluency_data,
+    fluency_t_data: payload.fluency_t_data,
+    digits_data: payload.digits_data,
+    alternation_data: payload.alternation_data,
+    dots_data: payload.dots_data,
+    cubes_data: payload.cubes_data,
+    numberloc_data: payload.numberloc_data,
+    social_data: payload.social_data,
+    social_b_data: payload.social_b_data,
+    delayed_recognition_data: payload.delayed_recognition_data,
+    sentences_data: payload.sentences_data
+  };
+  return JSON.stringify(normalized);
+}
+
+function startAutoSaveWatcher() {
+  if (autosaveIntervalId || !supabaseClient) {
+    return;
+  }
+  autosaveIntervalId = window.setInterval(() => {
+    const next = buildAutosaveFingerprint();
+    if (!next) {
+      return;
+    }
+    if (next !== autosaveFingerprint) {
+      autosaveFingerprint = next;
+      scheduleSessionSave();
+    }
+  }, 2000);
+}
+
 function resetAllTests() {
-  resetCurrentItem();
+  if (recognition && captureContext) {
+    try {
+      recognition.stop();
+    } catch (err) {}
+  }
+  captureContext = null;
+  isStopping = false;
+
+  namingSessionEnded = false;
+  comprehensionSessionEnded = false;
+  digitsSessionEnded = false;
+  dotsSessionEnded = false;
+  cubesSessionEnded = false;
+  numberlocSessionEnded = false;
+  alternationHalted = false;
+
+  itemStates.forEach(state => {
+    state.entries = [];
+    state.tokens = [];
+    state.matched = false;
+    state.status = "pending";
+    state.notes = "";
+  });
   activeIndex = 0;
+  if (dom.manualInput) {
+    dom.manualInput.value = "";
+  }
   loadItem(0);
 
-  resetComprehension();
+  compStates.forEach(state => {
+    state.selectedId = null;
+    state.status = "pending";
+    state.correct = false;
+    state.timestamp = null;
+    state.tokens = [];
+    state.entries = [];
+    state.notes = "";
+  });
   compIndex = 0;
   moveComprehension(0, { force: true });
 
-  resetSpelling();
+  spellingStates.forEach(state => {
+    state.status = "pending";
+    state.tokens = [];
+    state.entries = [];
+    state.typedAnswer = "";
+    state.correct = false;
+    state.timestamp = null;
+    state.spelledCandidate = "";
+  });
   spellIndex = 0;
+  if (dom.spellManualInput) {
+    dom.spellManualInput.value = "";
+  }
   moveSpelling(0);
 
   resetStory();
   resetDelayedStory();
   resetDelayedRecognition();
+  Object.values(storyScoreInputs).forEach(input => {
+    if (input) {
+      input.checked = false;
+    }
+  });
+  Object.values(delayedStoryScoreInputs).forEach(input => {
+    if (input) {
+      input.checked = false;
+    }
+  });
+  if (dom.storySectionScore) {
+    dom.storySectionScore.textContent = "0";
+  }
+  if (dom.delayedStorySectionScore) {
+    dom.delayedStorySectionScore.textContent = "0";
+  }
+  if (dom.delayedRecognitionScore) {
+    dom.delayedRecognitionScore.textContent = "0";
+  }
+  updateDelayedRetentionDisplay();
 
   resetFluency();
   resetFluencyT();
 
-  resetDigits();
+  digitStates.forEach(state => {
+    if (state.autoAdvanceTimer) {
+      clearTimeout(state.autoAdvanceTimer);
+      state.autoAdvanceTimer = null;
+    }
+    state.status = "pending";
+    state.digits = [];
+    state.entries = [];
+    state.typedAnswer = "";
+    state.candidate = "";
+    state.correct = false;
+    state.timestamp = null;
+  });
   digitsIndex = 0;
+  if (dom.digitsManualInput) {
+    dom.digitsManualInput.value = "";
+  }
   moveDigits(0, { force: true });
 
-  resetAlternation();
+  alternationStates.forEach(state => {
+    state.status = "pending";
+    state.numbers = [];
+    state.letters = [];
+    state.entries = [];
+    state.typedAnswer = "";
+    state.candidate = "";
+    state.correct = false;
+    state.timestamp = null;
+  });
   altIndex = 0;
   moveAlternation(0);
 
-  resetDots();
+  dotsStates.forEach(state => {
+    state.status = "pending";
+    state.digits = [];
+    state.entries = [];
+    state.candidate = "";
+    state.correct = false;
+    state.timestamp = null;
+  });
   dotsIndex = 0;
   moveDots(0, { force: true });
 
-  resetCubes();
+  cubesStates.forEach(state => {
+    state.status = "pending";
+    state.digits = [];
+    state.entries = [];
+    state.candidate = "";
+    state.correct = false;
+    state.timestamp = null;
+  });
   cubesIndex = 0;
   moveCubes(0, { force: true });
 
-  resetNumberLoc();
+  numberlocStates.forEach(state => {
+    state.status = "pending";
+    state.digits = [];
+    state.entries = [];
+    state.candidate = "";
+    state.correct = false;
+    state.timestamp = null;
+  });
   numberlocIndex = 0;
   moveNumberLoc(0, { force: true });
 
@@ -1564,6 +1765,7 @@ function resetAllTests() {
   moveSocialB(0);
 
   sentenceState.index = 0;
+  sentenceState.status = "pending";
   sentenceState.responses = Array(sentencePrompts.length).fill("");
   if (dom.sentenceInputs) {
     dom.sentenceInputs.forEach(input => {

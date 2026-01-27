@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ECAS Naming Exercise - Automated</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="/config.js"></script>
     <script>
       window.STORY_SCORER_URL = window.STORY_SCORER_URL || "/score-story";
       window.FLUENCY_SCORER_URL = window.FLUENCY_SCORER_URL || "/score-fluency";
       window.FLUENCY_T_SCORER_URL = window.FLUENCY_T_SCORER_URL || "/score-fluency-t";
       window.SENTENCE_SCORER_URL = window.SENTENCE_SCORER_URL || "/score-sentences";
-      window.SUPABASE_URL = "${SUPABASE_URL}";
-      window.SUPABASE_ANON_KEY = "${SUPABASE_ANON_KEY}";
+      window.SUPABASE_URL = window.SUPABASE_URL || "";
+      window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
@@ -82,13 +83,6 @@
                 <code id="session-id-display">—</code>
               </div>
             </div>
-            <label class="session-field">
-              <span class="eyebrow">Load Session ID</span>
-              <div class="session-id-row">
-                <input type="text" id="session-load-id" placeholder="Enter session ID" />
-                <button class="ghost" id="session-load-btn" type="button">Load</button>
-              </div>
-            </label>
           </div>
           <div class="session-footer">
             <button class="ghost" id="session-reset-btn" type="button">Reset</button>
