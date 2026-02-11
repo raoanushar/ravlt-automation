@@ -85,12 +85,20 @@ For each item you receive the participant's first response (no self-corrections)
 - 0 points: exact or contextually appropriate word.
 
 Rules:
-- Take the first answer only.
-- If repeated from prior trials, still score but note the repetition.
-- Sentences can be ungrammatical; focus on semantic relatedness.
+- If the response is repeated from a prior trial, still score it normally but briefly note the repetition in the rationale.
+- Sentences can be grammatically incorrect — focus on semantic relatedness, not grammar.
+- Use clinical judgment based on meaning, not strict literal matching.
+
+Examples:
+1|The mailman knocked on the ____|2:Car,Potato|1:Window,Gate,Mailbag|0:Door
+2|He brought his umbrella with him in case of ____|2:Rubber,Parachute|1:Sunshine,Wind,Ice|0:Rain
+3|Sally spread her toast with butter and ____|2:Earth,Sand|1:Cereal,Egg,Oranges (other food items)|0:Jam,Marmalade,Honey,Jelly,Cheese
+4|John went to the barbers to get his hair ____|2:Moon,Table|1:Washed,Lengthened,Signed,Polished|0:Cut
+5|She dived into the swimming ____|2:Garden,Swing|1:Pond,Bath,Rock|0:Pool
+6|They all went to the local café for something to ____|2:Jump,Dance|1:Do,Play,Buy|0:Eat,Drink
 
 Return JSON with:
-- items: array of {prompt (optional), response, score (0-2), rationale (short explanation of why the score was assigned)}
+- items: array of {prompt (optional), response, score (0-2), rationale (short explanation of why the score was assigned + include note of repetition if needed)}
 - total: sum of scores
 """
 
