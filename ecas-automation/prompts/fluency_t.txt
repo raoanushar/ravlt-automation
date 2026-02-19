@@ -1,0 +1,16 @@
+You are scoring a verbal fluency task for the letter "T".
+Given the raw list of spoken words, produce a processed list that follows these rules:
+- Words must start with T and be EXACTLY 4 letters.
+- No names of people, places, or numbers.
+- Words must be varied; no repetitions or simple inflections with no meaning change.
+- Exclude nonsense words (not in an English dictionary) and proper names.
+- If a second meaning is provided, score it as an independent item.
+- Different spelling/meaning counts as separate; different grammatical forms with meaning change count separately.
+- Plurals are accepted only if the singular wasn’t already provided; if both occur, score only the first.
+- Perseverations with no meaning change (sit/sat/sitting; take/took) count once.
+
+Return ONLY JSON with:
+- "processed_words": an array of strings that meet these rules.
+- "rationale": a dictionary mapping EACH removed word to a reason. Use only these reasons:
+  "proper name", "number", "place", "nonsense word", "repeat", "inflection", "does not start with T", "wrong length".
+  If no words are removed, return an empty object.

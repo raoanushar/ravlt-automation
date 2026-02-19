@@ -44,6 +44,17 @@ logging.basicConfig(level=logging.INFO, format="gg %(asctime)s %(levelname)s %(m
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_env_file(os.path.join(BASE_DIR, ".env"))
+PROMPT_DIR = os.path.join(BASE_DIR, "ecas-automation", "prompts")
+
+
+def load_prompt_file(filename: str, fallback: str) -> str:
+    path = os.path.join(PROMPT_DIR, filename)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            content = handle.read().strip()
+            return content or fallback
+    except Exception:
+        return fallback
 
 
 class StoryScore(BaseModel):
@@ -167,11 +178,33 @@ Return ONLY JSON with:
   If no words are removed, return an empty object.
 """
 
-def build_story_prompt(transcript: str, override: str | None) -> str:
-    base = (override or "").strip() or SCORING_PROMPT
+def build_story_prompt(transcript: str, override: str | None, base_prompt: str) -> str:
+    base = (override or "").strip() or base_prompt
     if "<<TRANSCRIPT>>" in base:
         return base.replace("<<TRANSCRIPT>>", transcript)
     return f"{base}\n\nTranscript:\n{transcript}"
+
+
+def extract_usage(completion) -> dict:
+    usage = getattr(completion, "usage", None)
+    if not usage:
+        return {}
+    # Handle both legacy and newer naming if available.
+    input_tokens = getattr(usage, "prompt_tokens", None)
+    output_tokens = getattr(usage, "completion_tokens", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    if input_tokens is None:
+        input_tokens = getattr(usage, "input_tokens", None)
+    if output_tokens is None:
+        output_tokens = getattr(usage, "output_tokens", None)
+    result = {}
+    if input_tokens is not None:
+        result["input_tokens"] = int(input_tokens)
+    if output_tokens is not None:
+        result["output_tokens"] = int(output_tokens)
+    if total_tokens is not None:
+        result["total_tokens"] = int(total_tokens)
+    return result
 
 
 api_key = os.getenv("OPENAI_API_KEY", "")
@@ -247,7 +280,8 @@ def score_story():
     data = request.get_json(force=True) or {}
     transcript = data.get("transcript", "") or ""
     override = data.get("prompt") if isinstance(data, dict) else ""
-    prompt = build_story_prompt(transcript, override)
+    prompt_base = load_prompt_file("story.txt", SCORING_PROMPT)
+    prompt = build_story_prompt(transcript, override, prompt_base)
     logging.info("Scoring request received. Transcript length: %s", len(transcript))
 
     try:
@@ -261,6 +295,7 @@ def score_story():
         )
         parsed: StoryScore = completion.choices[0].message.parsed
         payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
         logging.info("OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("OpenAI call failed")
@@ -290,7 +325,7 @@ def score_fluency():
     data = request.get_json(force=True) or {}
     words = data.get("words", []) or []
     override = data.get("prompt") if isinstance(data, dict) else ""
-    prompt_text = (override or "").strip() or FLUENCY_PROMPT
+    prompt_text = (override or "").strip() or load_prompt_file("fluency.txt", FLUENCY_PROMPT)
     logging.info("Fluency scoring request. Raw words count: %s", len(words))
     try:
         completion = client.chat.completions.create(
@@ -308,6 +343,7 @@ def score_fluency():
         payload = {
             "processed_words": processed_words if isinstance(processed_words, list) else [],
             "rationale": rationale if isinstance(rationale, dict) else {},
+            "usage": extract_usage(completion),
         }
         logging.info("Fluency OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
@@ -342,7 +378,7 @@ def score_fluency_t():
     data = request.get_json(force=True) or {}
     words = data.get("words", []) or []
     override = data.get("prompt") if isinstance(data, dict) else ""
-    prompt_text = (override or "").strip() or FLUENCY_T_PROMPT
+    prompt_text = (override or "").strip() or load_prompt_file("fluency_t.txt", FLUENCY_T_PROMPT)
     logging.info("Fluency-T scoring request. Raw words count: %s", len(words))
     try:
         completion = client.chat.completions.create(
@@ -360,6 +396,7 @@ def score_fluency_t():
         payload = {
             "processed_words": processed_words if isinstance(processed_words, list) else [],
             "rationale": rationale if isinstance(rationale, dict) else {},
+            "usage": extract_usage(completion),
         }
         logging.info("Fluency-T OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
@@ -384,7 +421,7 @@ def score_sentences():
     data = request.get_json(force=True) or {}
     responses = data.get("responses", []) or []
     override = data.get("prompt") if isinstance(data, dict) else ""
-    prompt_text = (override or "").strip() or SENTENCE_PROMPT
+    prompt_text = (override or "").strip() or load_prompt_file("sentence.txt", SENTENCE_PROMPT)
     logging.info("Sentence scoring request. Responses count: %s", len(responses))
     lines = []
     for idx, item in enumerate(responses, start=1):
@@ -394,7 +431,7 @@ def score_sentences():
     payload_text = "\n".join(lines)
     try:
         completion = client.chat.completions.parse(
-            model="gpt-4o-mini",
+            model="gpt-5.1",
             messages=[
                 {"role": "system", "content": "You score sentence completion responses strictly."},
                 {"role": "user", "content": f"{prompt_text}\n\nParticipant responses:\n{payload_text}"},
@@ -403,6 +440,7 @@ def score_sentences():
         )
         parsed: SentenceScore = completion.choices[0].message.parsed
         payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
         logging.info("Sentence OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("Sentence OpenAI call failed")

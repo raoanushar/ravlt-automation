@@ -245,16 +245,14 @@ Return JSON with:
 - total: sum of scores`
 };
 
-const PROMPT_DEFAULTS_VERSION = "2025-02-13";
-
-const PROMPT_STORAGE_KEYS = {
-  story: "ecas.prompt.story",
-  fluency: "ecas.prompt.fluency",
-  fluencyT: "ecas.prompt.fluencyT",
-  sentence: "ecas.prompt.sentence"
+const PROMPT_FILE_PATHS = {
+  story: "prompts/story.txt",
+  fluency: "prompts/fluency.txt",
+  fluencyT: "prompts/fluency_t.txt",
+  sentence: "prompts/sentence.txt"
 };
 
-const PROMPT_VERSION_KEY = "ecas.prompt.defaultsVersion";
+const PROMPT_CACHE = {};
 
 const SUPABASE_URL_RAW = window.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY_RAW = window.SUPABASE_ANON_KEY || "";
@@ -765,9 +763,12 @@ const delayedRecognitionStates = delayedRecognitionQuestions.map(() => ({
   correct: null
 }));
 
-init();
+init().catch(err => {
+  console.error("Initialization failed", err);
+});
 
-function init() {
+async function init() {
+  await loadPrompts();
   bindControls();
   setupTabs();
   setupPromptEditor();
@@ -1188,31 +1189,37 @@ function setupTabs() {
 }
 
 function getPromptValue(kind) {
-  const key = PROMPT_STORAGE_KEYS[kind];
-  if (!key) {
-    return "";
-  }
-  const stored = localStorage.getItem(key);
-  if (stored !== null) {
-    return stored;
+  if (PROMPT_CACHE[kind]) {
+    return PROMPT_CACHE[kind];
   }
   return PROMPT_DEFAULTS[kind] || "";
 }
 
-function savePromptValue(kind, value) {
-  const key = PROMPT_STORAGE_KEYS[kind];
-  if (!key) {
-    return;
+async function loadPrompts() {
+  const entries = Object.entries(PROMPT_FILE_PATHS);
+  for (const [kind, path] of entries) {
+    try {
+      const response = await fetch(path, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const text = await response.text();
+      PROMPT_CACHE[kind] = text.trim() || PROMPT_DEFAULTS[kind] || "";
+    } catch (err) {
+      console.warn(`Failed to load prompt file ${path}`, err);
+      PROMPT_CACHE[kind] = PROMPT_DEFAULTS[kind] || "";
+    }
   }
-  localStorage.setItem(key, value);
+  refreshPromptEditorInputs();
+}
+
+function savePromptValue(kind, value) {
+  void kind;
+  void value;
 }
 
 function resetPromptValue(kind) {
-  const key = PROMPT_STORAGE_KEYS[kind];
-  if (!key) {
-    return;
-  }
-  localStorage.removeItem(key);
+  void kind;
 }
 
 function setPromptStatus(el, message) {
@@ -1258,7 +1265,6 @@ async function copyPromptText(text, statusEl) {
 }
 
 function setupPromptEditor() {
-  ensurePromptDefaultsCurrent();
   const bindings = [
     {
       kind: "story",
@@ -1304,16 +1310,10 @@ function setupPromptEditor() {
       return;
     }
     input.value = getPromptValue(binding.kind);
-    saveBtn.addEventListener("click", () => {
-      savePromptValue(binding.kind, input.value || "");
-      setPromptStatus(status, "Saved");
-    });
+    input.readOnly = true;
+    saveBtn.disabled = true;
     if (revertBtn) {
-      revertBtn.addEventListener("click", () => {
-        resetPromptValue(binding.kind);
-        input.value = getPromptValue(binding.kind);
-        setPromptStatus(status, "Reverted");
-      });
+      revertBtn.disabled = true;
     }
     if (copyBtn) {
       copyBtn.addEventListener("click", () => {
@@ -1800,12 +1800,7 @@ function resetAllTests() {
 function buildSessionPayload() {
   const subtests = buildSubtestSnapshots();
   return {
-    prompts: {
-      story: getPromptValue("story"),
-      fluency: getPromptValue("fluency"),
-      fluencyT: getPromptValue("fluencyT"),
-      sentence: getPromptValue("sentence")
-    },
+    prompts: {},
     scores: buildScoreSnapshot(),
     transcripts: {
       story: getStoryTranscript(),
@@ -1867,12 +1862,6 @@ function applyLoadedSession(record) {
   storeSessionMeta(getSessionMetaFromInputs());
 
   if (record.prompts) {
-    Object.entries(PROMPT_STORAGE_KEYS).forEach(([kind, key]) => {
-      if (record.prompts[kind] !== undefined) {
-        localStorage.setItem(key, record.prompts[kind] || "");
-      }
-    });
-    ensurePromptDefaultsCurrent();
     refreshPromptEditorInputs();
   }
 
@@ -2370,18 +2359,6 @@ function serializeSessionTimers() {
     };
   });
   return result;
-}
-
-function ensurePromptDefaultsCurrent() {
-  const currentVersion = localStorage.getItem(PROMPT_VERSION_KEY);
-  if (currentVersion === PROMPT_DEFAULTS_VERSION) {
-    return;
-  }
-  Object.entries(PROMPT_STORAGE_KEYS).forEach(([kind, key]) => {
-    const defaultValue = PROMPT_DEFAULTS[kind] || "";
-    localStorage.setItem(key, defaultValue);
-  });
-  localStorage.setItem(PROMPT_VERSION_KEY, PROMPT_DEFAULTS_VERSION);
 }
 
 function setupSentenceScoreEditing() {
