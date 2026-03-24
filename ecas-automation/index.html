@@ -11,6 +11,7 @@
       window.FLUENCY_SCORER_URL = window.FLUENCY_SCORER_URL || "/score-fluency";
       window.FLUENCY_T_SCORER_URL = window.FLUENCY_T_SCORER_URL || "/score-fluency-t";
       window.SENTENCE_SCORER_URL = window.SENTENCE_SCORER_URL || "/score-sentences";
+      window.ALTERNATION_SCORER_URL = window.ALTERNATION_SCORER_URL || "/segment-alternation";
       window.SUPABASE_URL = window.SUPABASE_URL || "";
       window.SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
     </script>
@@ -710,7 +711,18 @@
             alternating between numbers and letters, in order, without skipping any until I tell you to stop. Let's begin together, ready:
             1-A, 2-B, 3-C..."
           </p>
-          <p class="muted">Score correct whether they say number-first (4-D) or letter-first (D-4).</p>
+          <p class="muted">Capture the full spoken sequence first, then use the AI copilot to segment it into trial-level responses.</p>
+        </div>
+
+        <div class="prompt-box">
+          <p class="eyebrow">Proctor Instructions</p>
+          <ul class="muted">
+            <li>Click <strong>Start Listening</strong> once and let the participant continue the sequence out loud.</li>
+            <li>Watch the live transcription as it comes in, then click <strong>Stop &amp; Segment</strong> to have the AI copilot map the full transcript onto the ECAS alternation trials.</li>
+            <li>Use the green <strong>✓</strong> and red <strong>×</strong> buttons in the <strong>Manual Score</strong> column to record your own judgment while the participant is speaking or after reviewing the segmented results.</li>
+            <li>If the AI score and your manual score differ, a small <strong>!</strong> flag will appear in the <strong>Score</strong> column so you can resolve the discrepancy.</li>
+            <li>You can edit the <strong>Response</strong> text directly if the transcript needs correction, add proctor notes as part of your workflow, and use audio playback for quality control.</li>
+          </ul>
         </div>
 
         <div class="progress-row">
@@ -732,7 +744,7 @@
         <div class="controls">
           <div class="control-row">
             <button class="primary" id="alt-start-btn">Start Listening</button>
-            <button class="ghost" id="alt-stop-btn">Stop &amp; Score</button>
+            <button class="ghost" id="alt-stop-btn">Stop &amp; Segment</button>
           </div>
           <div class="control-row">
             <button class="primary" id="alt-submit-btn">Submit</button>
@@ -765,26 +777,28 @@
                 <th>Trial</th>
                 <th>Target</th>
                 <th>Response</th>
+                <th>Manual Score</th>
                 <th>Score</th>
               </tr>
             </thead>
             <tbody id="alt-log-body">
-              <tr><td>1</td><td>4 - D</td><td></td><td></td></tr>
-              <tr><td>2</td><td>5 - E</td><td></td><td></td></tr>
-              <tr><td>3</td><td>6 - F</td><td></td><td></td></tr>
-              <tr><td>4</td><td>7 - G</td><td></td><td></td></tr>
-              <tr><td>5</td><td>8 - H</td><td></td><td></td></tr>
-              <tr><td>6</td><td>9 - I</td><td></td><td></td></tr>
-              <tr><td>7</td><td>10 - J</td><td></td><td></td></tr>
-              <tr><td>8</td><td>11 - K</td><td></td><td></td></tr>
-              <tr><td>9</td><td>12 - L</td><td></td><td></td></tr>
-              <tr><td>10</td><td>13 - M</td><td></td><td></td></tr>
-              <tr><td>11</td><td>14 - N</td><td></td><td></td></tr>
-              <tr><td>12</td><td>15 - O</td><td></td><td></td></tr>
+              <tr><td>1</td><td>4 - D</td><td></td><td></td><td></td></tr>
+              <tr><td>2</td><td>5 - E</td><td></td><td></td><td></td></tr>
+              <tr><td>3</td><td>6 - F</td><td></td><td></td><td></td></tr>
+              <tr><td>4</td><td>7 - G</td><td></td><td></td><td></td></tr>
+              <tr><td>5</td><td>8 - H</td><td></td><td></td><td></td></tr>
+              <tr><td>6</td><td>9 - I</td><td></td><td></td><td></td></tr>
+              <tr><td>7</td><td>10 - J</td><td></td><td></td><td></td></tr>
+              <tr><td>8</td><td>11 - K</td><td></td><td></td><td></td></tr>
+              <tr><td>9</td><td>12 - L</td><td></td><td></td><td></td></tr>
+              <tr><td>10</td><td>13 - M</td><td></td><td></td><td></td></tr>
+              <tr><td>11</td><td>14 - N</td><td></td><td></td><td></td></tr>
+              <tr><td>12</td><td>15 - O</td><td></td><td></td><td></td></tr>
             </tbody>
             <tfoot>
               <tr>
                 <th>Section Score (0-12)</th>
+                <th></th>
                 <th></th>
                 <th></th>
                 <th id="alt-section-score"></th>

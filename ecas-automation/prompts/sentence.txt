@@ -22,27 +22,27 @@ Clarifications:
 Reference Examples:
 1. The mailman knocked on the ____  
    0: Door  
-   1: Window, Gate, Floor, Rug (conceptually related as they are parts of a house) 
+   1: Window, Gate, Mailbag, Floor, Rug (conceptually related as they are parts of a house) 
    2: Car, Potato  
 2. He brought his umbrella with him in case of ____  
    0: Rain  
-   1: Sunshine, Wind  (other kinds of weather)
+   1: Sunshine, Wind, Ice  (other kinds of weather)
    2: Rubber, Parachute  
 3. Sally spread her toast with butter and ____  
    0: Jam, Cheese  
-   1: Cereal, Orange, Milk (other foods)  
+   1: Cereal, Egg, Orange, Milk (other foods)  
    2: Earth, Sand  
 4. John went to the barbers to get his hair ____  
    0: Cut  
-   1: Washed, Lengthened (other things that can happen to hair) 
+   1: Washed, Lengthened, Singed (other things that can happen to hair) 
    2: Table  
 5. She dived into the swimming ____  
    0: Pool  
-   1: Pond, Bath (related since they are vessels for water)
+   1: Pond, Bath, Rock (related since they are vessels for water)
    2: Garden  
 6. They all went to the local café for something to ____  
    0: Eat, Drink  
-   1: Buy  
+   1: Buy, Do, Play  
    2: See, Jump, Dance  (not conceptually related)
 
 Additional Confirmations:

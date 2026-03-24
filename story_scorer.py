@@ -87,6 +87,20 @@ class SentenceScore(BaseModel):
     total: int
 
 
+class AlternationItem(BaseModel):
+    trial: int
+    target: str
+    response: str
+    score: int
+    rationale: str
+
+
+class AlternationSegmentation(BaseModel):
+    items: list[AlternationItem]
+    total: int
+    stop_after_trial: int | None = None
+
+
 SENTENCE_PROMPT = """
 You are scoring the ECAS Executive - Sentence Completion task.
 
@@ -178,6 +192,52 @@ Return ONLY JSON with:
   If no words are removed, return an empty object.
 """
 
+ALTERNATION_PROMPT = """
+You are segmenting the ECAS Executive Alternation task: number/letter switching.
+
+The examiner already prompted the participant with:
+1-A, 2-B, 3-C
+
+The participant then continued the sequence. Your job is to take one messy speech-to-text transcript for the whole task and segment it into the 12 ECAS target trials:
+1. 4-D
+2. 5-E
+3. 6-F
+4. 7-G
+5. 8-H
+6. 9-I
+7. 10-J
+8. 11-K
+9. 12-L
+10. 13-M
+11. 14-N
+12. 15-O
+
+Important rules:
+- A response can be number-first or letter-first. Both are correct. Example: "4 D" and "D 4" are both correct for trial 1.
+- The transcript may contain ASR noise. Normalize obvious variants like:
+  "four d", "4d", "d4", "dee four", "ten j", "jay ten", "eleven kay", "oh" for O.
+- Segment the participant's transcript in chronological order.
+- For each target trial, produce the best single response substring from the transcript.
+- Preserve participant mistakes exactly. Do NOT auto-correct an incorrect sequence into the expected target.
+- If the participant says something like "13 N 14 M" instead of "13 M 14 N", keep those mistakes attached to the relevant trials as spoken so downstream scoring can mark them incorrect.
+- If the participant skips ahead, swaps letters/numbers, repeats, reverses order, or blends multiple trials together, reflect that in the segmented responses rather than silently fixing it.
+- If the participant self-corrects within the same trial, keep only the FINAL corrected answer for that trial, not the earlier abandoned attempt.
+- Example: if the transcript says "8 I, oh sorry, no actually 8 H", the response for that trial should be "8 H", not "8 I 8 H".
+- More generally, when two candidate answers belong to the same trial because the speaker overrides themselves, return only the latest committed answer for that trial.
+- ECAS administration stops after the first error. If the participant makes a clear error, later trials should usually be blank unless the transcript clearly contains a valid continued response before stopping.
+- If there is not enough evidence for a trial, return an empty response with score 0 and explain briefly.
+
+Return ONLY JSON with:
+- items: array of 12 objects, each with:
+  - trial: integer 1-12
+  - target: target pair like "4-D"
+  - response: best segmented participant response for that trial, or ""
+  - score: 1 if correct, 0 if incorrect / missing
+  - rationale: brief explanation
+- total: sum of score values
+- stop_after_trial: the first trial number where the sequence clearly becomes incorrect, or null if no clear stopping point
+"""
+
 def build_story_prompt(transcript: str, override: str | None, base_prompt: str) -> str:
     base = (override or "").strip() or base_prompt
     if "<<TRANSCRIPT>>" in base:
@@ -229,6 +289,7 @@ def config_js():
     fluency_url = os.getenv("FLUENCY_SCORER_URL", "")
     fluency_t_url = os.getenv("FLUENCY_T_SCORER_URL", "")
     sentence_url = os.getenv("SENTENCE_SCORER_URL", "")
+    alternation_url = os.getenv("ALTERNATION_SCORER_URL", "")
     js = (
         "window.SUPABASE_URL = "
         + json.dumps(supabase_url)
@@ -242,6 +303,8 @@ def config_js():
         + json.dumps(fluency_t_url or "/score-fluency-t")
         + ";\nwindow.SENTENCE_SCORER_URL = "
         + json.dumps(sentence_url or "/score-sentences")
+        + ";\nwindow.ALTERNATION_SCORER_URL = "
+        + json.dumps(alternation_url or "/segment-alternation")
         + ";\n"
     )
     response = make_response(js)
@@ -401,6 +464,53 @@ def score_fluency_t():
         logging.info("Fluency-T OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("Fluency-T OpenAI call failed")
+        return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+    return jsonify(payload)
+
+
+@app.route("/segment-alternation", methods=["POST", "OPTIONS"])
+def segment_alternation():
+    if request.method == "OPTIONS":
+        logging.info("Alternation OPTIONS preflight received.")
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    if not client.api_key:
+        logging.error("OPENAI_API_KEY not set")
+        return jsonify({"error": "OPENAI_API_KEY not set"}), 400
+
+    data = request.get_json(force=True) or {}
+    transcript = data.get("transcript", "") or ""
+    trials = data.get("trials", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or load_prompt_file("alternation.txt", ALTERNATION_PROMPT)
+    trial_lines = []
+    for idx, item in enumerate(trials, start=1):
+        number = item.get("number") if isinstance(item, dict) else ""
+        letter = item.get("letter") if isinstance(item, dict) else ""
+        trial_lines.append(f"{idx}. {number}-{letter}")
+    payload_text = "\n".join(trial_lines)
+    try:
+        completion = client.chat.completions.parse(
+            model="gpt-5.1",
+            messages=[
+                {"role": "system", "content": "You segment ECAS alternation transcripts into trial-level responses."},
+                {
+                    "role": "user",
+                    "content": f"{prompt_text}\n\nTargets:\n{payload_text}\n\nRaw transcript:\n{transcript}",
+                },
+            ],
+            response_format=AlternationSegmentation,
+        )
+        parsed: AlternationSegmentation = completion.choices[0].message.parsed
+        payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
+        logging.info("Alternation OpenAI call succeeded.")
+    except Exception as err:  # pylint: disable=broad-except
+        logging.exception("Alternation OpenAI call failed")
         return jsonify({"error": "llm_failed", "detail": str(err)}), 500
     return jsonify(payload)
 

@@ -1,0 +1,43 @@
+You are segmenting the ECAS Executive Alternation task: number/letter switching.
+
+The examiner already prompted the participant with:
+1-A, 2-B, 3-C
+
+The participant then continued the sequence. Your job is to take one messy speech-to-text transcript for the whole task and segment it into the 12 ECAS target trials:
+1. 4-D
+2. 5-E
+3. 6-F
+4. 7-G
+5. 8-H
+6. 9-I
+7. 10-J
+8. 11-K
+9. 12-L
+10. 13-M
+11. 14-N
+12. 15-O
+
+Important rules:
+- A response can be number-first or letter-first. Both are correct. Example: "4 D" and "D 4" are both correct for trial 1.
+- The transcript may contain ASR noise. Normalize obvious variants like:
+  "four d", "4d", "d4", "dee four", "ten j", "jay ten", "eleven kay", "oh" for O.
+- Segment the participant's transcript in chronological order.
+- For each target trial, produce the best single response substring from the transcript.
+- Preserve participant mistakes exactly. Do NOT auto-correct an incorrect sequence into the expected target.
+- If the participant says something like "13 N 14 M" instead of "13 M 14 N", keep those mistakes attached to the relevant trials as spoken so downstream scoring can mark them incorrect.
+- If the participant skips ahead, swaps letters/numbers, repeats, reverses order, or blends multiple trials together, reflect that in the segmented responses rather than silently fixing it.
+- If the participant self-corrects within the same trial, keep only the FINAL corrected answer for that trial, not the earlier abandoned attempt.
+- Example: if the transcript says "8 I, oh sorry, no actually 8 H", the response for that trial should be "8 H", not "8 I 8 H".
+- More generally, when two candidate answers belong to the same trial because the speaker overrides themselves, return only the latest committed answer for that trial.
+- ECAS administration stops after the first error. If the participant makes a clear error, later trials should usually be blank unless the transcript clearly contains a valid continued response before stopping.
+- If there is not enough evidence for a trial, return an empty response with score 0 and explain briefly.
+
+Return ONLY JSON with:
+- items: array of 12 objects, each with:
+  - trial: integer 1-12
+  - target: target pair like "4-D"
+  - response: best segmented participant response for that trial, or ""
+  - score: 1 if correct, 0 if incorrect / missing
+  - rationale: brief explanation
+- total: sum of score values
+- stop_after_trial: the first trial number where the sequence clearly becomes incorrect, or null if no clear stopping point

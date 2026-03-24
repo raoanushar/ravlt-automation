@@ -580,6 +580,63 @@ th {
   color: #b91c1c;
 }
 
+.manual-score-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.manual-score-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.manual-score-btn:hover {
+  transform: translateY(-1px);
+}
+
+.manual-score-btn.selected-pass {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.manual-score-btn.selected-fail {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.score-with-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.score-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #a16207;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: default;
+}
+
 .pill-explainer {
   font-style: italic;
   font-weight: 600;
