@@ -662,6 +662,7 @@ const delayedStoryScoreInputs = DELAYED_STORY_CRITERIA.reduce((acc, criterion) =
   return acc;
 }, {});
 const STORY_SCORER_URL = window.STORY_SCORER_URL || "";
+const ALTERNATION_SCORER_URL = window.ALTERNATION_SCORER_URL || "";
 Object.values(storyScoreInputs).forEach(input => {
   if (input) {
     input.addEventListener("change", updateStoryScoreFromChecks);
@@ -697,15 +698,25 @@ const digitStates = digitTrials.map(() => ({
 }));
 const alternationStates = alternationTrials.map(() => ({
   entries: [],
+  sequence: [],
   numbers: [],
   letters: [],
   typedAnswer: "",
   status: "pending",
   correct: false,
+  manualCorrect: null,
   timestamp: null,
-  candidate: ""
+  candidate: "",
+  autoAdvanceTimer: null
 }));
 let alternationHalted = false;
+const alternationCaptureState = {
+  status: "pending",
+  chunks: [],
+  transcript: "",
+  usage: null,
+  error: ""
+};
 const fluencyTState = {
   status: "pending",
   tokens: [],
@@ -1719,15 +1730,20 @@ function resetAllTests() {
   moveDigits(0, { force: true });
 
   alternationStates.forEach(state => {
+    clearAlternationTimer(state);
     state.status = "pending";
+    state.sequence = [];
     state.numbers = [];
     state.letters = [];
     state.entries = [];
     state.typedAnswer = "";
     state.candidate = "";
     state.correct = false;
+    state.manualCorrect = null;
     state.timestamp = null;
+    state.rationale = "";
   });
+  resetAlternationCapture();
   altIndex = 0;
   moveAlternation(0);
 
@@ -3169,15 +3185,48 @@ function resetFluency() {
   updateFluencyUI();
 }
 
+function clearAlternationTimer(state) {
+  if (state && state.autoAdvanceTimer) {
+    clearTimeout(state.autoAdvanceTimer);
+    state.autoAdvanceTimer = null;
+  }
+}
+
+function resetAlternationCapture() {
+  alternationCaptureState.status = "pending";
+  alternationCaptureState.chunks = [];
+  alternationCaptureState.transcript = "";
+  alternationCaptureState.usage = null;
+  alternationCaptureState.error = "";
+}
+
+function resetAlternationResponses(options = {}) {
+  const { preserveManual = false } = options;
+  alternationStates.forEach(state => {
+    clearAlternationTimer(state);
+    state.status = "pending";
+    state.sequence = [];
+    state.numbers = [];
+    state.letters = [];
+    state.entries = [];
+    state.typedAnswer = "";
+    state.candidate = "";
+    state.correct = false;
+    if (!preserveManual) {
+      state.manualCorrect = null;
+    }
+    state.timestamp = null;
+    state.rationale = "";
+  });
+  alternationHalted = false;
+  altIndex = 0;
+}
+
 function startAlternationListening() {
   if (!speechSupported || !recognition) {
     return;
   }
-  if (alternationHalted) {
-    return;
-  }
-  const state = alternationStates[altIndex];
-  if (state.status === "listening") {
+  if (alternationCaptureState.status === "listening" || alternationCaptureState.status === "segmenting") {
     return;
   }
   if (captureContext && captureContext.type !== "alternation") {
@@ -3186,12 +3235,12 @@ function startAlternationListening() {
     }
     captureContext = null;
   }
+  resetAlternationResponses();
+  resetAlternationCapture();
+  loadAlternation(0);
+  const state = alternationStates[altIndex];
   state.status = "listening";
-  state.numbers = [];
-  state.letters = [];
-  state.entries = [];
-  state.candidate = "";
-  state.timestamp = null;
+  alternationCaptureState.status = "listening";
   captureContext = { type: "alternation" };
   isStopping = false;
   try {
@@ -3203,11 +3252,12 @@ function startAlternationListening() {
 }
 
 function stopAlternationListening() {
-  const state = alternationStates[altIndex];
-  if (state.status !== "listening") {
+  if (alternationCaptureState.status !== "listening") {
     return;
   }
+  const state = alternationStates[altIndex];
   state.status = "finishing";
+  alternationCaptureState.status = "finishing";
   isStopping = true;
   if (recognition) {
     recognition.stop();
@@ -3215,7 +3265,24 @@ function stopAlternationListening() {
   updateAlternationUI();
 }
 
-function finalizeAlternationCapture() {
+async function finalizeAlternationCapture() {
+  const state = alternationStates[altIndex];
+  if (!state) {
+    return;
+  }
+  clearAlternationTimer(state);
+  captureContext = null;
+  isStopping = false;
+  if (!alternationCaptureState.transcript.trim()) {
+    alternationCaptureState.status = "completed";
+    state.status = "pending";
+    updateAlternationUI();
+    return;
+  }
+  await segmentAlternationWithLLM();
+}
+
+function submitAlternation() {
   const state = alternationStates[altIndex];
   if (!state) {
     return;
@@ -3223,39 +3290,10 @@ function finalizeAlternationCapture() {
   evaluateAlternation(state, alternationTrials[altIndex]);
   state.status = "completed";
   state.timestamp = Date.now();
-  captureContext = null;
-  isStopping = false;
-  if (!state.typedAnswer && state.entries.length) {
-    state.typedAnswer = state.entries[state.entries.length - 1].text;
-  }
-  if (!state.correct) {
-    alternationHalted = true;
-  }
-  updateAlternationUI();
-}
-
-function submitAlternation() {
-  if (alternationHalted) {
-    return;
-  }
-  const state = alternationStates[altIndex];
-  evaluateAlternation(state, alternationTrials[altIndex]);
-  state.status = "completed";
-  state.timestamp = Date.now();
-  if (!state.correct) {
-    alternationHalted = true;
-  }
   updateAlternationUI();
 }
 
 function moveAlternation(index) {
-  if (alternationHalted) {
-    return;
-  }
-  const state = alternationStates[altIndex];
-  if (state.status === "pending" && (state.numbers.length || state.letters.length || state.typedAnswer)) {
-    submitAlternation();
-  }
   loadAlternation(index);
 }
 
@@ -3265,15 +3303,10 @@ function resetAlternation() {
     recognition.stop();
     captureContext = null;
   }
-  state.status = "pending";
-  state.numbers = [];
-  state.letters = [];
-  state.entries = [];
-  state.typedAnswer = "";
-  state.candidate = "";
-  state.correct = false;
-  state.timestamp = null;
-  alternationHalted = false;
+  clearAlternationTimer(state);
+  resetAlternationResponses();
+  resetAlternationCapture();
+  loadAlternation(0);
   updateAlternationUI();
 }
 
@@ -4834,20 +4867,13 @@ function handleRecognitionResult(event) {
         continue;
       }
       const transcript = result[0].transcript || "";
-      const { numbers, letters } = extractDigitsAndLetters(transcript);
-      state.entries.push({
-        text: transcript.trim(),
-        timestamp: Date.now(),
-        numbers,
-        letters
-      });
-      state.numbers.push(...numbers);
-      state.letters.push(...letters);
+      const trimmed = transcript.trim();
+      if (!trimmed) {
+        continue;
+      }
+      alternationCaptureState.chunks.push(trimmed);
+      alternationCaptureState.transcript = alternationCaptureState.chunks.join(" ");
     }
-    if (!state.typedAnswer && state.entries.length) {
-      state.typedAnswer = state.entries[state.entries.length - 1].text;
-    }
-    evaluateAlternation(state, alternationTrials[altIndex]);
     updateAlternationUI();
     return;
   }
@@ -5065,15 +5091,10 @@ function handleRecognitionError(event) {
   } else if (captureContext && captureContext.type === "alternation") {
     const state = alternationStates[altIndex];
     if (state.status === "listening" || state.status === "finishing") {
-      state.status = "pending";
-      state.numbers = [];
-      state.letters = [];
-      state.entries = [];
-      state.typedAnswer = "";
-      state.candidate = "";
-      state.correct = false;
+      clearAlternationTimer(state);
+      resetAlternationCapture();
+      resetAlternationResponses();
       captureContext = null;
-      alternationHalted = false;
       updateAlternationUI();
     }
   } else if (captureContext && captureContext.type === "dots") {
@@ -6979,10 +7000,12 @@ function updateAlternationUI() {
   dom.altProgressCount.textContent = `${altIndex + 1} / ${alternationTrials.length}`;
 
   let statusLabel = "Idle";
-  if (state.status === "listening") {
+  if (alternationCaptureState.status === "listening") {
     statusLabel = "Listening";
-  } else if (state.status === "finishing") {
+  } else if (alternationCaptureState.status === "finishing") {
     statusLabel = "Finishing";
+  } else if (alternationCaptureState.status === "segmenting") {
+    statusLabel = "Segmenting";
   } else if (state.status === "completed") {
     statusLabel = state.correct ? "Correct" : "Recorded";
   } else if (alternationHalted) {
@@ -6990,29 +7013,35 @@ function updateAlternationUI() {
   }
   dom.altStatus.textContent = statusLabel;
   dom.altStatus.className =
-    state.status === "completed"
+    alternationCaptureState.status === "segmenting"
+      ? "status-badge listening"
+      : state.status === "completed"
       ? state.correct
         ? "status-badge completed"
         : "status-badge"
-      : state.status === "listening"
+      : alternationCaptureState.status === "listening"
       ? "status-badge listening"
       : "status-badge";
 
-  const disabledDueToHalt = alternationHalted && state.status !== "listening";
+  const busy =
+    alternationCaptureState.status === "listening" ||
+    alternationCaptureState.status === "finishing" ||
+    alternationCaptureState.status === "segmenting";
+  const disabledDueToHalt = alternationHalted && !busy;
   if (dom.altStartBtn) {
-    dom.altStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.altStartBtn.disabled = !speechSupported || busy;
   }
   if (dom.altStopBtn) {
-    dom.altStopBtn.disabled = state.status !== "listening";
+    dom.altStopBtn.disabled = alternationCaptureState.status !== "listening";
   }
   if (dom.altSubmitBtn) {
-    dom.altSubmitBtn.disabled = state.status === "listening" || disabledDueToHalt;
+    dom.altSubmitBtn.disabled = busy || disabledDueToHalt;
   }
   if (dom.altNextBtn) {
-    dom.altNextBtn.disabled = state.status === "listening" || disabledDueToHalt;
+    dom.altNextBtn.disabled = busy || disabledDueToHalt;
   }
   if (dom.altResetBtn) {
-    dom.altResetBtn.disabled = state.status === "listening";
+    dom.altResetBtn.disabled = busy;
   }
 
   renderAlternationLive();
@@ -7024,30 +7053,37 @@ function renderAlternationLive() {
   if (!dom.altLiveWords) {
     return;
   }
-  const state = alternationStates[altIndex];
-  const combined = [...state.numbers, ...state.letters];
-  if (!combined.length) {
+  const transcript = alternationCaptureState.transcript.trim();
+  if (!transcript) {
     dom.altLiveWords.innerHTML = '<span class="muted">No entries captured yet.</span>';
     return;
   }
-  const frag = document.createDocumentFragment();
-  combined.slice(-12).forEach(token => {
-    const chip = document.createElement("span");
-    chip.textContent = token;
-    frag.appendChild(chip);
-  });
-  dom.altLiveWords.innerHTML = "";
-  dom.altLiveWords.appendChild(frag);
+  dom.altLiveWords.textContent = transcript;
 }
 
 function renderAlternationMatch() {
   if (!dom.altMatchStatus || !dom.altCandidate) {
     return;
   }
+  if (alternationCaptureState.error) {
+    dom.altMatchStatus.textContent = "Segmentation failed";
+    dom.altCandidate.textContent = alternationCaptureState.error;
+    return;
+  }
+  if (alternationCaptureState.status === "segmenting") {
+    dom.altMatchStatus.textContent = "Segmenting transcript";
+    dom.altCandidate.textContent = "Running the AI copilot on the full Section 7 transcript.";
+    return;
+  }
   const state = alternationStates[altIndex];
   if (!state.numbers.length && !state.letters.length && !state.typedAnswer) {
-    dom.altMatchStatus.textContent = "No response yet";
-    dom.altCandidate.textContent = "";
+    if (alternationCaptureState.transcript.trim()) {
+      dom.altMatchStatus.textContent = "Transcript captured";
+      dom.altCandidate.textContent = "Press Stop to segment the full transcript into ECAS trials.";
+    } else {
+      dom.altMatchStatus.textContent = "No response yet";
+      dom.altCandidate.textContent = "";
+    }
     return;
   }
   const pill = document.createElement("span");
@@ -7055,18 +7091,15 @@ function renderAlternationMatch() {
   pill.textContent = state.correct ? "Correct" : "Recorded";
   dom.altMatchStatus.innerHTML = "";
   dom.altMatchStatus.appendChild(pill);
-  if (alternationHalted && !state.correct) {
-    dom.altCandidate.textContent = "Administration stopped after an error. Press Reset to restart.";
-  } else {
-    dom.altCandidate.textContent = state.candidate ? `Heard/typed: ${state.candidate}` : "";
-  }
+  dom.altCandidate.textContent = state.candidate ? `Heard/typed: ${state.candidate}` : "";
 }
 
 function renderAlternationLog() {
   if (!dom.altLogBody) {
     return;
   }
-  let correctCount = 0;
+  let consecutiveCorrectCount = 0;
+  let firstIncorrectSeen = false;
   const frag = document.createDocumentFragment();
   alternationStates.forEach((state, idx) => {
     const tr = document.createElement("tr");
@@ -7082,36 +7115,158 @@ function renderAlternationLog() {
       state.typedAnswer = trimmed;
       state.candidate = trimmed;
       if (trimmed) {
+        const parsed = extractAlternationSequence(trimmed);
         state.entries.push({
           text: trimmed,
           timestamp: Date.now(),
-          numbers: extractDigits(trimmed),
-          letters: extractLetters(trimmed)
+          sequence: parsed.sequence,
+          numbers: parsed.numbers,
+          letters: parsed.letters
         });
+        state.sequence = parsed.sequence;
+        state.numbers = parsed.numbers;
+        state.letters = parsed.letters;
       }
       evaluateAlternation(state, alternationTrials[idx]);
       state.status = "completed";
       updateAlternationUI();
     });
+    const manualTd = document.createElement("td");
+    const manualControls = document.createElement("div");
+    manualControls.className = "manual-score-controls";
+    const passBtn = document.createElement("button");
+    passBtn.type = "button";
+    passBtn.className = `manual-score-btn ${state.manualCorrect === true ? "selected-pass" : ""}`;
+    passBtn.textContent = "✓";
+    passBtn.title = "Manual score: correct";
+    passBtn.addEventListener("click", () => {
+      state.manualCorrect = state.manualCorrect === true ? null : true;
+      updateAlternationUI();
+    });
+    const failBtn = document.createElement("button");
+    failBtn.type = "button";
+    failBtn.className = `manual-score-btn ${state.manualCorrect === false ? "selected-fail" : ""}`;
+    failBtn.textContent = "×";
+    failBtn.title = "Manual score: incorrect";
+    failBtn.addEventListener("click", () => {
+      state.manualCorrect = state.manualCorrect === false ? null : false;
+      updateAlternationUI();
+    });
+    manualControls.append(passBtn, failBtn);
+    manualTd.appendChild(manualControls);
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
+      const wrapper = document.createElement("span");
+      wrapper.className = "score-with-flag";
       const pill = document.createElement("span");
       pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
       pill.textContent = state.correct ? "Correct" : "Incorrect";
-      resultTd.appendChild(pill);
-      if (state.correct) {
-        correctCount += 1;
+      wrapper.appendChild(pill);
+      const hasManualConflict =
+        typeof state.manualCorrect === "boolean" && state.manualCorrect !== Boolean(state.correct);
+      if (hasManualConflict) {
+        const flag = document.createElement("span");
+        flag.className = "score-flag";
+        flag.textContent = "!";
+        flag.title = "Manual score differs from AI score. Resolve the discrepancy.";
+        wrapper.appendChild(flag);
+      }
+      resultTd.appendChild(wrapper);
+      if (!firstIncorrectSeen && state.correct) {
+        consecutiveCorrectCount += 1;
+      } else if (!state.correct) {
+        firstIncorrectSeen = true;
       }
     }
-    tr.append(trialTd, targetTd, respTd, resultTd);
+    tr.append(trialTd, targetTd, respTd, manualTd, resultTd);
     frag.appendChild(tr);
   });
   dom.altLogBody.innerHTML = "";
   dom.altLogBody.appendChild(frag);
   if (dom.altSectionScore) {
-    dom.altSectionScore.textContent = `${correctCount}`;
+    dom.altSectionScore.textContent = `${consecutiveCorrectCount}`;
   }
   updateScorecard();
+}
+
+async function segmentAlternationWithLLM() {
+  if (!ALTERNATION_SCORER_URL) {
+    alert("Set window.ALTERNATION_SCORER_URL before segmenting alternation.");
+    return;
+  }
+  alternationCaptureState.status = "segmenting";
+  alternationCaptureState.error = "";
+  updateAlternationUI();
+  try {
+    const response = await fetch(ALTERNATION_SCORER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: alternationCaptureState.transcript,
+        trials: alternationTrials.map(trial => ({ number: trial.number, letter: trial.letter }))
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Alternation scorer HTTP error", response.status, text);
+      throw new Error(`Alternation scorer returned ${response.status}`);
+    }
+    const result = await response.json();
+    applyAlternationSegmentation(result);
+    alternationCaptureState.usage = result.usage || null;
+    alternationCaptureState.status = "completed";
+  } catch (err) {
+    alternationCaptureState.status = "completed";
+    alternationCaptureState.error = err?.message || "Alternation segmentation failed";
+    console.error("Alternation segmentation failed", err);
+    alert("Alternation segmentation failed. Check console/backend.");
+  } finally {
+    updateAlternationUI();
+  }
+}
+
+function applyAlternationSegmentation(result = {}) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  resetAlternationResponses({ preserveManual: true });
+  items.forEach((item, idx) => {
+    const state = alternationStates[idx];
+    if (!state) {
+      return;
+    }
+    const responseText = (item?.response || "").trim();
+    state.typedAnswer = responseText;
+    state.rationale = item?.rationale || "";
+    if (responseText) {
+      const parsed = extractAlternationSequence(responseText);
+      state.sequence = parsed.sequence;
+      state.numbers = parsed.numbers;
+      state.letters = parsed.letters;
+      state.entries = [
+        {
+          text: responseText,
+          timestamp: Date.now(),
+          sequence: parsed.sequence,
+          numbers: parsed.numbers,
+          letters: parsed.letters
+        }
+      ];
+      evaluateAlternation(state, alternationTrials[idx]);
+      state.status = "completed";
+      state.timestamp = Date.now();
+      if (typeof item?.score === "number") {
+        state.correct = item.score === 1;
+      }
+    }
+  });
+  const firstIncorrect = alternationStates.findIndex(state => state.status === "completed" && !state.correct);
+  const firstPending = alternationStates.findIndex(state => state.status !== "completed");
+  if (firstIncorrect >= 0) {
+    loadAlternation(firstIncorrect);
+  } else if (firstPending >= 0) {
+    loadAlternation(firstPending);
+  } else {
+    loadAlternation(alternationTrials.length - 1);
+  }
 }
 
 function evaluateAlternation(state, trial) {
@@ -7119,24 +7274,18 @@ function evaluateAlternation(state, trial) {
   const requiredLetter = trial.letter.toUpperCase();
   const numbers = state.numbers || [];
   const letters = state.letters || [];
-  const typedNums = extractDigits(state.typedAnswer || "");
-  const typedLetters = extractLetters(state.typedAnswer || "");
+  const voiceSequence = state.sequence || [];
+  const typedSequence = extractAlternationSequence(state.typedAnswer || "").sequence;
+  const useTypedFallback = !voiceSequence.length;
+  const typedNums = useTypedFallback ? extractDigits(state.typedAnswer || "") : [];
+  const typedLetters = useTypedFallback ? extractLetters(state.typedAnswer || "") : [];
   const allNumbers = [...numbers, ...typedNums];
   const allLetters = [...letters, ...typedLetters];
   const numberMatch = allNumbers.includes(requiredNumber);
   const letterMatch = allLetters.includes(requiredLetter);
-  const candidateParts = [];
-  if (allNumbers.length) {
-    candidateParts.push(allNumbers.join(" "));
-  }
-  if (allLetters.length) {
-    candidateParts.push(allLetters.join(" "));
-  }
-  state.candidate = candidateParts.join(" / ");
+  const candidateSequence = voiceSequence.length ? voiceSequence : typedSequence;
+  state.candidate = candidateSequence.join(" ");
   state.correct = Boolean(numberMatch && letterMatch);
-  if (!state.correct) {
-    alternationHalted = true;
-  }
 }
 
 function extractDigitsAndLetters(text = "") {
@@ -7145,6 +7294,108 @@ function extractDigitsAndLetters(text = "") {
     letters: extractLetters(text)
   };
 }
+
+function extractAlternationSequence(text = "") {
+  const raw = String(text || "")
+    .toUpperCase()
+    .replace(/([0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([0-9])/g, "$1 $2");
+  const parts = raw.split(/[\s,./-]+/).filter(Boolean);
+  const sequence = [];
+
+  parts.forEach(part => {
+    const token = part.replace(/[^A-Z0-9]/g, "");
+    if (!token) {
+      return;
+    }
+
+    if (/^[0-9]+$/.test(token)) {
+      token.split("").forEach(char => sequence.push(char));
+      return;
+    }
+
+    if (/^[A-Z0-9]+$/.test(token) && /[A-Z]/.test(token) && /[0-9]/.test(token)) {
+      token.split("").forEach(char => {
+        if (/[0-9]/.test(char) || /[A-Z]/.test(char)) {
+          sequence.push(char);
+        }
+      });
+      return;
+    }
+
+    const digit = alternationDigitTokenMap[token];
+    if (digit) {
+      sequence.push(digit);
+      return;
+    }
+
+    const letter = alternationLetterTokenMap[token];
+    if (letter) {
+      sequence.push(letter);
+      return;
+    }
+
+    if (/^[A-Z]$/.test(token)) {
+      sequence.push(token);
+    }
+  });
+
+  return {
+    sequence,
+    numbers: sequence.filter(token => /^[0-9]$/.test(token)),
+    letters: sequence.filter(token => /^[A-Z]$/.test(token))
+  };
+}
+
+const alternationDigitTokenMap = {
+  ZERO: "0",
+  OH: "0",
+  ONE: "1",
+  WON: "1",
+  TWO: "2",
+  TOO: "2",
+  TO: "2",
+  THREE: "3",
+  FOUR: "4",
+  FOR: "4",
+  FIVE: "5",
+  SIX: "6",
+  SEVEN: "7",
+  EIGHT: "8",
+  ATE: "8",
+  NINE: "9"
+};
+
+const alternationLetterTokenMap = {
+  D: "D",
+  DEE: "D",
+  E: "E",
+  EE: "E",
+  F: "F",
+  EF: "F",
+  EFF: "F",
+  G: "G",
+  GEE: "G",
+  H: "H",
+  AITCH: "H",
+  AYCH: "H",
+  I: "I",
+  EYE: "I",
+  J: "J",
+  JAY: "J",
+  K: "K",
+  KAY: "K",
+  L: "L",
+  EL: "L",
+  ELL: "L",
+  M: "M",
+  EM: "M",
+  N: "N",
+  EN: "N",
+  O: "O",
+  OHLETTER: "O",
+  OH: "O"
+};
 
 function extractLetters(text = "") {
   if (!text) {

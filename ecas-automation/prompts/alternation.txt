@@ -29,7 +29,9 @@ Important rules:
 - If the participant self-corrects within the same trial, keep only the FINAL corrected answer for that trial, not the earlier abandoned attempt.
 - Example: if the transcript says "8 I, oh sorry, no actually 8 H", the response for that trial should be "8 H", not "8 I 8 H".
 - More generally, when two candidate answers belong to the same trial because the speaker overrides themselves, return only the latest committed answer for that trial.
-- ECAS administration stops after the first error. If the participant makes a clear error, later trials should usually be blank unless the transcript clearly contains a valid continued response before stopping.
+- Even if the participant makes an error, continue segmenting all later discernible responses from the transcript. Do NOT stop segmentation at the first mistake.
+- Score each trial independently based on what was actually said for that trial.
+- The downstream application will calculate the official section score as the number of consecutive correct responses from the beginning, so your job is to preserve and score every trial-level response, not to truncate the sequence.
 - If there is not enough evidence for a trial, return an empty response with score 0 and explain briefly.
 
 Return ONLY JSON with:
