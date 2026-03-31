@@ -6534,8 +6534,11 @@ function renderComprehensionLog() {
           timestamp: Date.now(),
           tokens: tokenize(trimmed)
         };
-        state.entries.push(newEntry);
-        state.tokens.push(...newEntry.tokens);
+        state.entries = [newEntry];
+        state.tokens = [...newEntry.tokens];
+      } else {
+        state.entries = [];
+        state.tokens = [];
       }
       evaluateComprehension(state, q);
       updateComprehensionUI();
@@ -6665,8 +6668,17 @@ function renderSpellingLog() {
     attachInlineEdit(targetTd, targetTd.textContent, newText => {
       const trimmed = newText.trim();
       state.typedAnswer = trimmed;
-      state.spelledCandidate = trimmed;
+      if (trimmed) {
+        const tokens = tokenize(trimmed);
+        state.entries = [{ text: trimmed, timestamp: Date.now(), tokens }];
+        state.tokens = tokens;
+      } else {
+        state.entries = [];
+        state.tokens = [];
+      }
       evaluateSpelling(state, spellingWords[idx]);
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
       updateSpellingUI();
     });
     const manualTd = document.createElement("td");
@@ -7121,16 +7133,21 @@ function renderDigitsLog() {
     attachInlineEdit(respTd, respTd.textContent, newText => {
       const trimmed = newText.trim();
       state.typedAnswer = trimmed;
-      state.candidate = trimmed;
       if (trimmed) {
-        state.entries.push({
+        const digits = extractDigits(trimmed);
+        state.entries = [{
           text: trimmed,
           timestamp: Date.now(),
-          digits: extractDigits(trimmed)
-        });
+          digits
+        }];
+        state.digits = digits;
+      } else {
+        state.entries = [];
+        state.digits = [];
       }
       evaluateDigits(state, digitTrials[idx]);
-      state.status = "completed";
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
       updateDigitsUI();
     });
     const manualTd = document.createElement("td");
@@ -7185,7 +7202,7 @@ function evaluateDigits(state, targetSeq) {
   const reversed = [...targetDigits].reverse().join("");
   const voiceCandidate = (state.digits || []).join("");
   const typedCandidate = extractDigits(state.typedAnswer || "").join("");
-  const candidate = voiceCandidate || typedCandidate;
+  const candidate = typedCandidate || voiceCandidate;
   state.candidate = candidate;
   state.correct = candidate === reversed;
 }
@@ -7345,22 +7362,27 @@ function renderAlternationLog() {
     attachInlineEdit(respTd, respTd.textContent, newText => {
       const trimmed = newText.trim();
       state.typedAnswer = trimmed;
-      state.candidate = trimmed;
       if (trimmed) {
         const parsed = extractAlternationSequence(trimmed);
-        state.entries.push({
+        state.entries = [{
           text: trimmed,
           timestamp: Date.now(),
           sequence: parsed.sequence,
           numbers: parsed.numbers,
           letters: parsed.letters
-        });
+        }];
         state.sequence = parsed.sequence;
         state.numbers = parsed.numbers;
         state.letters = parsed.letters;
+      } else {
+        state.entries = [];
+        state.sequence = [];
+        state.numbers = [];
+        state.letters = [];
       }
       evaluateAlternation(state, alternationTrials[idx]);
-      state.status = "completed";
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
       updateAlternationUI();
     });
     const manualTd = document.createElement("td");
@@ -7512,18 +7534,19 @@ function applyAlternationSegmentation(result = {}) {
 function evaluateAlternation(state, trial) {
   const requiredNumber = String(trial.number);
   const requiredLetter = trial.letter.toUpperCase();
-  const numbers = state.numbers || [];
-  const letters = state.letters || [];
-  const voiceSequence = state.sequence || [];
   const typedSequence = extractAlternationSequence(state.typedAnswer || "").sequence;
+  const useTypedOverride = typedSequence.length > 0;
+  const numbers = useTypedOverride ? extractDigits(state.typedAnswer || "") : state.numbers || [];
+  const letters = useTypedOverride ? extractLetters(state.typedAnswer || "") : state.letters || [];
+  const candidateSequence = useTypedOverride ? typedSequence : state.sequence || [];
+  const voiceSequence = state.sequence || [];
   const useTypedFallback = !voiceSequence.length;
-  const typedNums = useTypedFallback ? extractDigits(state.typedAnswer || "") : [];
-  const typedLetters = useTypedFallback ? extractLetters(state.typedAnswer || "") : [];
+  const typedNums = !useTypedOverride && useTypedFallback ? extractDigits(state.typedAnswer || "") : [];
+  const typedLetters = !useTypedOverride && useTypedFallback ? extractLetters(state.typedAnswer || "") : [];
   const allNumbers = [...numbers, ...typedNums];
   const allLetters = [...letters, ...typedLetters];
   const numberMatch = allNumbers.includes(requiredNumber);
   const letterMatch = allLetters.includes(requiredLetter);
-  const candidateSequence = voiceSequence.length ? voiceSequence : typedSequence;
   state.candidate = candidateSequence.join(" ");
   state.correct = Boolean(numberMatch && letterMatch);
 }
@@ -7757,50 +7780,22 @@ function renderCubesLog() {
     respTd.classList.add("editable-cell");
     attachInlineEdit(respTd, respTd.textContent, newText => {
       const trimmed = newText.trim();
-      state.candidate = trimmed;
       if (trimmed) {
-        state.entries.push({
+        const digits = extractDigits(trimmed);
+        state.entries = [{
           text: trimmed,
           timestamp: Date.now(),
-          digits: extractDigits(trimmed)
-        });
-        state.digits = extractDigits(trimmed);
-      }
-      evaluateNumberLoc(state, numberLocTrials[idx]);
-      state.status = "completed";
-      updateNumberLocUI();
-    });
-    respTd.classList.add("editable-cell");
-    attachInlineEdit(respTd, respTd.textContent, newText => {
-      const trimmed = newText.trim();
-      state.candidate = trimmed;
-      if (trimmed) {
-        state.entries.push({
-          text: trimmed,
-          timestamp: Date.now(),
-          digits: extractDigits(trimmed)
-        });
-        state.digits = extractDigits(trimmed);
+          digits
+        }];
+        state.digits = digits;
+      } else {
+        state.entries = [];
+        state.digits = [];
       }
       evaluateCubes(state, cubeTrials[idx]);
-      state.status = "completed";
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
       updateCubesUI();
-    });
-    respTd.classList.add("editable-cell");
-    attachInlineEdit(respTd, respTd.textContent, newText => {
-      const trimmed = newText.trim();
-      state.candidate = trimmed;
-      if (trimmed) {
-        state.entries.push({
-          text: trimmed,
-          timestamp: Date.now(),
-          digits: extractDigits(trimmed)
-        });
-        state.digits = extractDigits(trimmed);
-      }
-      evaluateDots(state, dotTrials[idx]);
-      state.status = "completed";
-      updateDotsUI();
     });
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
@@ -7927,6 +7922,26 @@ function renderNumberLocLog() {
     targetTd.textContent = numberLocTrials[idx].answer;
     const respTd = document.createElement("td");
     respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      if (trimmed) {
+        const digits = extractDigits(trimmed);
+        state.entries = [{
+          text: trimmed,
+          timestamp: Date.now(),
+          digits
+        }];
+        state.digits = digits;
+      } else {
+        state.entries = [];
+        state.digits = [];
+      }
+      evaluateNumberLoc(state, numberLocTrials[idx]);
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
+      updateNumberLocUI();
+    });
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
       const pill = document.createElement("span");
@@ -8676,6 +8691,28 @@ function renderDotsLog() {
     targetTd.textContent = dotTrials[idx].answer;
     const respTd = document.createElement("td");
     respTd.textContent = state.candidate || (state.entries.slice(-1)[0]?.text || "");
+    respTd.classList.add("editable-cell");
+    attachInlineEdit(respTd, respTd.textContent, newText => {
+      const trimmed = newText.trim();
+      if (trimmed) {
+        const digits = extractDigits(trimmed);
+        state.entries = [
+          {
+            text: trimmed,
+            timestamp: Date.now(),
+            digits
+          }
+        ];
+        state.digits = digits;
+      } else {
+        state.entries = [];
+        state.digits = [];
+      }
+      evaluateDots(state, dotTrials[idx]);
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
+      updateDotsUI();
+    });
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
       const pill = document.createElement("span");
@@ -8849,16 +8886,15 @@ function renderLog() {
     participantTd.classList.add("editable-cell");
     attachInlineEdit(participantTd, participantTd.textContent, newText => {
       const trimmed = newText.trim();
-      if (latestEntry) {
-        latestEntry.text = trimmed;
-        latestEntry.tokens = tokenize(trimmed);
-      } else if (trimmed) {
-        state.entries.push({
+      if (trimmed) {
+        state.entries = [{
           text: trimmed,
           source: "Edited",
           timestamp: Date.now(),
           tokens: tokenize(trimmed)
-        });
+        }];
+      } else {
+        state.entries = [];
       }
       retokenizeItemState(state);
       evaluateMatch(state, item);
@@ -8965,7 +9001,7 @@ function evaluateSpelling(state, target) {
   const targetExact = normalizeSpellingLetters(target);
   const voiceCandidate = normalizeSpellingLetters(buildSpelledCandidate(state.tokens || []));
   const typedCandidate = normalizeSpellingLetters(state.typedAnswer || "");
-  state.spelledCandidate = voiceCandidate || typedCandidate || "";
+  state.spelledCandidate = typedCandidate || voiceCandidate || "";
   state.correct = state.spelledCandidate === targetExact;
 }
 
