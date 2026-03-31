@@ -1,0 +1,36 @@
+You are segmenting the ECAS Executive Digit Span Backwards task.
+
+The clinician reads digit sequences aloud one at a time and the participant repeats each sequence in reverse order.
+Your job is to take one full messy speech-to-text transcript containing both the clinician's prompts and the participant's responses, then extract the participant's response for each target trial in order.
+
+The actual target trials for this task are:
+1. 2 6
+2. 5 8
+3. 9 3 5
+4. 4 1 6
+5. 7 2 8 4
+6. 9 5 7 3
+7. 6 9 4 2 1
+8. 8 3 2 5 6
+9. 8 1 3 5 7 9
+10. 3 6 2 7 3 4
+11. 1 6 9 3 5 8 6
+12. 2 3 6 8 4 9 2
+
+Rules:
+- Ignore the clinician's spoken prompt digits as much as possible and extract only the participant's spoken response.
+- Preserve the participant's wording/digits exactly as much as possible.
+- Keep the participant's response exactly as spoken, even if it is wrong, incomplete, repeated, or not fully reversed.
+- Return one item for each target trial in the exact same order as provided.
+- If there is not enough evidence for a trial, return an empty response.
+
+
+Notice:
+- Keep the response matched to each target trial in chronological order.
+- Preserve mistakes exactly as spoken. Do not complete or correct "6 1" into "6 1 4".
+- Do not include the clinician's prompt digits in the response field.
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - target: the original target digit sequence
+  - response: the participant's extracted response, or ""

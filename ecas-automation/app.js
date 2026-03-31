@@ -275,7 +275,10 @@ let autosaveIntervalId = null;
 const sentenceState = {
   index: 0,
   status: "pending",
-  responses: Array(sentencePrompts.length).fill("")
+  responses: Array(sentencePrompts.length).fill(""),
+  transcriptChunks: [],
+  transcript: "",
+  segmentStatus: "idle"
 };
 
 const alternationTrials = [
@@ -549,9 +552,15 @@ const spellingStates = spellingWords.map(() => ({
   typedAnswer: "",
   status: "pending",
   correct: false,
+  manualWrong: false,
   timestamp: null,
   spelledCandidate: ""
 }));
+const spellingCaptureState = {
+  status: "pending",
+  chunks: [],
+  transcript: ""
+};
 
 let recognition;
 let speechSupported = false;
@@ -662,6 +671,9 @@ const delayedStoryScoreInputs = DELAYED_STORY_CRITERIA.reduce((acc, criterion) =
   return acc;
 }, {});
 const STORY_SCORER_URL = window.STORY_SCORER_URL || "";
+const SENTENCE_SEGMENTER_URL = window.SENTENCE_SEGMENTER_URL || "";
+const DIGIT_SEGMENTER_URL = window.DIGIT_SEGMENTER_URL || "";
+const SPELLING_SEGMENTER_URL = window.SPELLING_SEGMENTER_URL || "";
 const ALTERNATION_SCORER_URL = window.ALTERNATION_SCORER_URL || "";
 Object.values(storyScoreInputs).forEach(input => {
   if (input) {
@@ -692,10 +704,16 @@ const digitStates = digitTrials.map(() => ({
   typedAnswer: "",
   status: "pending",
   correct: false,
+  manualWrong: false,
   timestamp: null,
   candidate: "",
   autoAdvanceTimer: null
 }));
+const digitsCaptureState = {
+  status: "pending",
+  chunks: [],
+  transcript: ""
+};
 const alternationStates = alternationTrials.map(() => ({
   entries: [],
   sequence: [],
@@ -1674,9 +1692,13 @@ function resetAllTests() {
     state.entries = [];
     state.typedAnswer = "";
     state.correct = false;
+    state.manualWrong = false;
     state.timestamp = null;
     state.spelledCandidate = "";
   });
+  spellingCaptureState.status = "pending";
+  spellingCaptureState.chunks = [];
+  spellingCaptureState.transcript = "";
   spellIndex = 0;
   if (dom.spellManualInput) {
     dom.spellManualInput.value = "";
@@ -1791,6 +1813,9 @@ function resetAllTests() {
   sentenceState.index = 0;
   sentenceState.status = "pending";
   sentenceState.responses = Array(sentencePrompts.length).fill("");
+  sentenceState.transcriptChunks = [];
+  sentenceState.transcript = "";
+  sentenceState.segmentStatus = "idle";
   if (dom.sentenceInputs) {
     dom.sentenceInputs.forEach(input => {
       input.value = "";
@@ -3310,13 +3335,41 @@ function resetAlternation() {
   updateAlternationUI();
 }
 
+function resetDigitsCapture() {
+  digitsCaptureState.status = "pending";
+  digitsCaptureState.chunks = [];
+  digitsCaptureState.transcript = "";
+}
+
+function resetDigitsResponses(options = {}) {
+  const { preserveManual = false } = options;
+  digitStates.forEach(state => {
+    if (state.autoAdvanceTimer) {
+      clearTimeout(state.autoAdvanceTimer);
+      state.autoAdvanceTimer = null;
+    }
+    state.status = "pending";
+    state.digits = [];
+    state.entries = [];
+    state.typedAnswer = "";
+    state.candidate = "";
+    state.correct = false;
+    if (!preserveManual) {
+      state.manualWrong = false;
+    }
+    state.timestamp = null;
+  });
+  digitsSessionEnded = false;
+  digitsIndex = 0;
+}
+
 function startDigitsListening() {
   if (!speechSupported || !recognition) {
     return;
   }
-  if (digitsSessionEnded) {
-    return;
-  }
+  resetDigitsResponses();
+  resetDigitsCapture();
+  loadDigits(0);
   const state = digitStates[digitsIndex];
   if (state.status === "listening") {
     return;
@@ -3328,14 +3381,7 @@ function startDigitsListening() {
     captureContext = null;
   }
   state.status = "listening";
-  state.digits = [];
-  state.entries = [];
-  state.candidate = "";
-  state.timestamp = null;
-  if (state.autoAdvanceTimer) {
-    clearTimeout(state.autoAdvanceTimer);
-    state.autoAdvanceTimer = null;
-  }
+  digitsCaptureState.status = "listening";
   captureContext = { type: "digits" };
   isStopping = false;
   try {
@@ -3347,11 +3393,12 @@ function startDigitsListening() {
 }
 
 function stopDigitsListening() {
-  const state = digitStates[digitsIndex];
-  if (state.status !== "listening") {
+  if (digitsCaptureState.status !== "listening") {
     return;
   }
+  const state = digitStates[digitsIndex];
   state.status = "finishing";
+  digitsCaptureState.status = "finishing";
   isStopping = true;
   if (recognition) {
     recognition.stop();
@@ -3359,7 +3406,7 @@ function stopDigitsListening() {
   updateDigitsUI();
 }
 
-function finalizeDigitsCapture() {
+async function finalizeDigitsCapture() {
   const state = digitStates[digitsIndex];
   if (!state) {
     return;
@@ -3368,20 +3415,15 @@ function finalizeDigitsCapture() {
     clearTimeout(state.autoAdvanceTimer);
     state.autoAdvanceTimer = null;
   }
-  evaluateDigits(state, digitTrials[digitsIndex]);
-  state.status = "completed";
-  state.timestamp = Date.now();
   captureContext = null;
   isStopping = false;
-  if (!state.typedAnswer && state.entries.length) {
-    state.typedAnswer = state.entries[state.entries.length - 1].text;
+  if (!digitsCaptureState.transcript.trim()) {
+    digitsCaptureState.status = "completed";
+    state.status = "pending";
+    updateDigitsUI();
+    return;
   }
-  updateDigitsUI();
-  if (digitsIndex < digitTrials.length - 1) {
-    loadDigits(digitsIndex + 1);
-  } else {
-    endDigitsSession();
-  }
+  await segmentDigitsWithLLM();
 }
 
 function submitDigits() {
@@ -3396,27 +3438,12 @@ function submitDigits() {
 }
 
 function moveDigits(index, options = {}) {
-  const { force = false, keepListening = false } = options;
-  if (digitsSessionEnded && (!captureContext || captureContext.type === "digits")) {
-    return;
-  }
+  const { force = false } = options;
   const state = digitStates[digitsIndex];
   if (!force && state.status === "listening") {
     return;
   }
-  if (state.autoAdvanceTimer) {
-    clearTimeout(state.autoAdvanceTimer);
-    state.autoAdvanceTimer = null;
-  }
-  if (state.status === "pending" && (state.digits.length || state.entries.length)) {
-    finalizeDigitsCapture();
-  }
   loadDigits(index);
-  if (keepListening && captureContext && captureContext.type === "digits") {
-    const nextState = digitStates[digitsIndex];
-    nextState.status = "listening";
-    updateDigitsUI();
-  }
 }
 
 function resetDigits() {
@@ -3425,21 +3452,12 @@ function resetDigits() {
     recognition.stop();
     captureContext = null;
   }
-  if (state.autoAdvanceTimer) {
-    clearTimeout(state.autoAdvanceTimer);
-    state.autoAdvanceTimer = null;
-  }
-  digitsSessionEnded = false;
-  state.status = "pending";
-  state.digits = [];
-  state.entries = [];
-  state.typedAnswer = "";
-  state.candidate = "";
-  state.correct = false;
-  state.timestamp = null;
+  resetDigitsResponses();
+  resetDigitsCapture();
   if (dom.digitsManualInput) {
     dom.digitsManualInput.value = "";
   }
+  loadDigits(0);
   updateDigitsUI();
 }
 
@@ -3490,6 +3508,23 @@ function startSpellingListening() {
   if (!speechSupported || !recognition) {
     return;
   }
+  spellingStates.forEach(state => {
+    state.status = "pending";
+    state.tokens = [];
+    state.entries = [];
+    state.typedAnswer = "";
+    state.correct = false;
+    state.manualWrong = false;
+    state.timestamp = null;
+    state.spelledCandidate = "";
+  });
+  spellingCaptureState.status = "pending";
+  spellingCaptureState.chunks = [];
+  spellingCaptureState.transcript = "";
+  spellIndex = 0;
+  if (dom.spellManualInput) {
+    dom.spellManualInput.value = "";
+  }
   const state = spellingStates[spellIndex];
   if (state.status === "listening") {
     return;
@@ -3501,10 +3536,7 @@ function startSpellingListening() {
     captureContext = null;
   }
   state.status = "listening";
-  state.tokens = [];
-  state.entries = [];
-  state.spelledCandidate = "";
-  state.timestamp = null;
+  spellingCaptureState.status = "listening";
   captureContext = { type: "spelling" };
   isStopping = false;
   try {
@@ -3516,11 +3548,12 @@ function startSpellingListening() {
 }
 
 function stopSpellingListening() {
-  const state = spellingStates[spellIndex];
-  if (state.status !== "listening") {
+  if (spellingCaptureState.status !== "listening") {
     return;
   }
+  const state = spellingStates[spellIndex];
   state.status = "finishing";
+  spellingCaptureState.status = "finishing";
   isStopping = true;
   if (recognition) {
     recognition.stop();
@@ -3528,21 +3561,20 @@ function stopSpellingListening() {
   updateSpellingUI();
 }
 
-function finalizeSpellingCapture() {
+async function finalizeSpellingCapture() {
   const state = spellingStates[spellIndex];
   if (!state) {
     return;
   }
-  const target = spellingWords[spellIndex];
-  evaluateSpelling(state, target);
-  state.status = "completed";
-  state.timestamp = Date.now();
   captureContext = null;
   isStopping = false;
-  if (!state.typedAnswer && state.entries.length) {
-    state.typedAnswer = state.entries[state.entries.length - 1].text;
+  if (!spellingCaptureState.transcript.trim()) {
+    spellingCaptureState.status = "completed";
+    state.status = "pending";
+    updateSpellingUI();
+    return;
   }
-  updateSpellingUI();
+  await segmentSpellingWithLLM();
 }
 
 function submitSpelling() {
@@ -3569,14 +3601,21 @@ function resetSpelling() {
     recognition.stop();
     captureContext = null;
   }
-  state.status = "pending";
-  state.tokens = [];
-  state.entries = [];
-  state.typedAnswer = "";
-  state.correct = false;
-  state.timestamp = null;
-  state.spelledCandidate = "";
+  spellingStates.forEach(spellState => {
+    spellState.status = "pending";
+    spellState.tokens = [];
+    spellState.entries = [];
+    spellState.typedAnswer = "";
+    spellState.correct = false;
+    spellState.manualWrong = false;
+    spellState.timestamp = null;
+    spellState.spelledCandidate = "";
+  });
+  spellingCaptureState.status = "pending";
+  spellingCaptureState.chunks = [];
+  spellingCaptureState.transcript = "";
   dom.spellManualInput.value = "";
+  loadSpelling(0);
   updateSpellingUI();
 }
 
@@ -4622,15 +4661,13 @@ function handleRecognitionResult(event) {
         continue;
       }
       const transcript = result[0].transcript || "";
-      const tokens = tokenize(transcript);
-      state.entries.push({
-        text: transcript.trim(),
-        timestamp: Date.now(),
-        tokens
-      });
-      state.tokens.push(...tokens);
+      const text = transcript.trim();
+      if (!text) {
+        continue;
+      }
+      spellingCaptureState.chunks.push(text);
+      spellingCaptureState.transcript = spellingCaptureState.chunks.join(" ");
     }
-    evaluateSpelling(state, spellingWords[spellIndex]);
     updateSpellingUI();
     return;
   }
@@ -4711,18 +4748,8 @@ function handleRecognitionResult(event) {
       if (!text) {
         continue;
       }
-      const idx = sentenceState.index;
-      const input = dom.sentenceInputs[idx];
-      if (input) {
-        if (!input.value) {
-          input.value = text;
-        } else {
-          input.value = `${input.value} ${text}`.trim();
-        }
-        sentenceState.responses[idx] = input.value;
-      } else {
-        sentenceState.responses[idx] = text;
-      }
+      sentenceState.transcriptChunks.push(text);
+      sentenceState.transcript = sentenceState.transcriptChunks.join(" ");
     }
     updateSentenceUI();
     return;
@@ -4776,32 +4803,14 @@ function handleRecognitionResult(event) {
         continue;
       }
       const transcript = result[0].transcript || "";
-      const digits = extractDigits(transcript);
-      state.entries.push({
-        text: transcript.trim(),
-        timestamp: Date.now(),
-        digits
-      });
-      state.digits.push(...digits);
+      const text = transcript.trim();
+      if (!text) {
+        continue;
+      }
+      digitsCaptureState.chunks.push(text);
+      digitsCaptureState.transcript = digitsCaptureState.chunks.join(" ");
     }
-    if (!state.typedAnswer && state.entries.length) {
-      state.typedAnswer = state.entries[state.entries.length - 1].text;
-      dom.digitsManualInput.value = state.typedAnswer;
-    }
-    evaluateDigits(state, digitTrials[digitsIndex]);
     updateDigitsUI();
-    if (!state.autoAdvanceTimer) {
-      state.autoAdvanceTimer = setTimeout(() => {
-        state.autoAdvanceTimer = null;
-        if (state.status === "listening") {
-          state.status = "finishing";
-          isStopping = true;
-          if (recognition) {
-            recognition.stop();
-          }
-        }
-      }, 600);
-    }
     return;
   }
 
@@ -4997,6 +5006,9 @@ function handleRecognitionError(event) {
     const state = spellingStates[spellIndex];
     if (state.status === "listening" || state.status === "finishing") {
       state.status = "pending";
+      spellingCaptureState.status = "idle";
+      spellingCaptureState.chunks = [];
+      spellingCaptureState.transcript = "";
       captureContext = null;
       updateSpellingUI();
     }
@@ -5085,6 +5097,7 @@ function handleRecognitionError(event) {
       state.typedAnswer = "";
       state.candidate = "";
       state.correct = false;
+      resetDigitsCapture();
       captureContext = null;
       updateDigitsUI();
     }
@@ -5096,6 +5109,15 @@ function handleRecognitionError(event) {
       resetAlternationResponses();
       captureContext = null;
       updateAlternationUI();
+    }
+  } else if (captureContext && captureContext.type === "sentence") {
+    if (sentenceState.status === "listening" || sentenceState.status === "finishing") {
+      sentenceState.status = "pending";
+      sentenceState.segmentStatus = "idle";
+      sentenceState.transcriptChunks = [];
+      sentenceState.transcript = "";
+      captureContext = null;
+      updateSentenceUI();
     }
   } else if (captureContext && captureContext.type === "dots") {
     const state = dotsStates[dotsIndex];
@@ -5220,6 +5242,9 @@ function handleRecognitionEnd() {
     }
     if (sentenceState.status === "finishing") {
       sentenceState.status = "pending";
+      captureContext = null;
+      isStopping = false;
+      void segmentSentencesWithLLM();
       updateSentenceUI();
     }
   } else if (captureContext.type === "digits") {
@@ -5232,7 +5257,7 @@ function handleRecognitionEnd() {
       return;
     }
     if (state.status === "finishing") {
-      finalizeDigitsCapture();
+      void finalizeDigitsCapture();
     }
   } else if (captureContext.type === "alternation") {
     const state = alternationStates[altIndex];
@@ -5256,7 +5281,7 @@ function handleRecognitionEnd() {
       return;
     }
     if (state.status === "finishing") {
-      finalizeSpellingCapture();
+      void finalizeSpellingCapture();
     }
   } else if (captureContext.type === "story") {
     if (storyState.status === "listening" && !isStopping) {
@@ -5840,37 +5865,45 @@ function updateSpellingUI() {
   dom.spellProgressCount.textContent = `${spellIndex + 1} / ${spellingWords.length}`;
 
   let statusLabel = "Idle";
-  if (state.status === "listening") {
+  if (spellingCaptureState.status === "listening") {
     statusLabel = "Listening";
-  } else if (state.status === "finishing") {
+  } else if (spellingCaptureState.status === "finishing") {
     statusLabel = "Finishing";
+  } else if (spellingCaptureState.status === "segmenting") {
+    statusLabel = "Segmenting";
   } else if (state.status === "completed") {
     statusLabel = state.correct ? "Correct" : "Recorded";
   }
   dom.spellStatus.textContent = statusLabel;
   dom.spellStatus.className =
-    state.status === "completed"
+    spellingCaptureState.status === "segmenting"
+      ? "status-badge listening"
+      : state.status === "completed"
       ? state.correct
         ? "status-badge completed"
         : "status-badge"
-      : state.status === "listening"
+      : spellingCaptureState.status === "listening"
       ? "status-badge listening"
       : "status-badge";
 
+  const busy =
+    spellingCaptureState.status === "listening" ||
+    spellingCaptureState.status === "finishing" ||
+    spellingCaptureState.status === "segmenting";
   if (dom.spellStartBtn) {
-    dom.spellStartBtn.disabled = !speechSupported || state.status === "listening";
+    dom.spellStartBtn.disabled = !speechSupported || busy;
   }
   if (dom.spellStopBtn) {
-    dom.spellStopBtn.disabled = state.status !== "listening";
+    dom.spellStopBtn.disabled = spellingCaptureState.status !== "listening";
   }
   if (dom.spellSubmitBtn) {
-    dom.spellSubmitBtn.disabled = state.status === "listening";
+    dom.spellSubmitBtn.disabled = busy;
   }
   if (dom.spellNextBtn) {
-    dom.spellNextBtn.disabled = state.status === "listening";
+    dom.spellNextBtn.disabled = busy;
   }
   if (dom.spellResetBtn) {
-    dom.spellResetBtn.disabled = state.status === "listening";
+    dom.spellResetBtn.disabled = busy;
   }
 
   renderSpellingLive();
@@ -6570,29 +6603,32 @@ function renderSpellingLive() {
   if (!dom.spellLiveWords) {
     return;
   }
-  const state = spellingStates[spellIndex];
-  if (!state.tokens.length) {
-    dom.spellLiveWords.innerHTML = '<span class="muted">No words captured yet.</span>';
+  const transcript = spellingCaptureState.transcript.trim();
+  if (!transcript) {
+    dom.spellLiveWords.innerHTML = '<span class="muted">No responses yet.</span>';
     return;
   }
-  const frag = document.createDocumentFragment();
-  state.tokens.slice(-20).forEach(token => {
-    const chip = document.createElement("span");
-    chip.textContent = token;
-    frag.appendChild(chip);
-  });
-  dom.spellLiveWords.innerHTML = "";
-  dom.spellLiveWords.appendChild(frag);
+  dom.spellLiveWords.textContent = transcript;
 }
 
 function renderSpellingMatch() {
   if (!dom.spellMatchStatus || !dom.spellCandidate) {
     return;
   }
+  if (spellingCaptureState.status === "segmenting") {
+    dom.spellMatchStatus.textContent = "Segmenting transcript";
+    dom.spellCandidate.textContent = "Mapping the full spelling transcript into raw spelled responses.";
+    return;
+  }
   const state = spellingStates[spellIndex];
   if (!state.tokens.length && !state.typedAnswer) {
-    dom.spellMatchStatus.textContent = "No response yet";
-    dom.spellCandidate.textContent = "";
+    if (spellingCaptureState.transcript.trim()) {
+      dom.spellMatchStatus.textContent = "Transcript captured";
+      dom.spellCandidate.textContent = "Click Done & Segment to populate the spelling rows.";
+    } else {
+      dom.spellMatchStatus.textContent = "No response yet";
+      dom.spellCandidate.textContent = "";
+    }
     return;
   }
   dom.spellCandidate.textContent = state.spelledCandidate
@@ -6613,6 +6649,10 @@ function renderSpellingLog() {
   }
   const frag = document.createDocumentFragment();
   let total = 0;
+  const lastManualWrongIndex = spellingStates.reduce(
+    (lastIdx, state, idx) => (state.manualWrong === true ? idx : lastIdx),
+    -1
+  );
   spellingStates.forEach((state, idx) => {
     const tr = document.createElement("tr");
     const correctTd = document.createElement("td");
@@ -6629,6 +6669,30 @@ function renderSpellingLog() {
       evaluateSpelling(state, spellingWords[idx]);
       updateSpellingUI();
     });
+    const manualTd = document.createElement("td");
+    const manualControls = document.createElement("div");
+    manualControls.className = "manual-score-controls";
+    const manualBtn = document.createElement("button");
+    manualBtn.type = "button";
+    manualBtn.className = "manual-score-btn";
+    if (state.manualWrong) {
+      manualBtn.classList.add("selected-fail");
+      manualBtn.textContent = "×";
+      manualBtn.title = "Manual score: incorrect";
+    } else if (lastManualWrongIndex >= 0 && idx < lastManualWrongIndex) {
+      manualBtn.classList.add("selected-pass");
+      manualBtn.textContent = "✓";
+      manualBtn.title = "Manual score: correct";
+    } else {
+      manualBtn.textContent = "○";
+      manualBtn.title = "Click to mark this row manually wrong.";
+    }
+    manualBtn.addEventListener("click", () => {
+      state.manualWrong = !state.manualWrong;
+      updateSpellingUI();
+    });
+    manualControls.append(manualBtn);
+    manualTd.appendChild(manualControls);
     const resultTd = document.createElement("td");
     const pill = document.createElement("span");
     const statusClass = state.status === "completed" ? (state.correct ? "success" : "miss") : "pending";
@@ -6638,13 +6702,76 @@ function renderSpellingLog() {
     if (state.status === "completed" && state.correct) {
       total += 1;
     }
-    tr.append(correctTd, targetTd, resultTd);
+    tr.append(correctTd, targetTd, manualTd, resultTd);
     frag.appendChild(tr);
   });
   dom.spellLogBody.innerHTML = "";
   dom.spellLogBody.appendChild(frag);
   if (dom.spellSectionScore) {
     dom.spellSectionScore.textContent = `${total}`;
+  }
+}
+
+async function segmentSpellingWithLLM() {
+  if (!SPELLING_SEGMENTER_URL) {
+    alert("Set window.SPELLING_SEGMENTER_URL before segmenting spelling.");
+    return;
+  }
+  spellingCaptureState.status = "segmenting";
+  updateSpellingUI();
+  try {
+    const response = await fetch(SPELLING_SEGMENTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: spellingCaptureState.transcript,
+        targets: spellingWords
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Spelling segmenter HTTP error", response.status, text);
+      throw new Error(`Spelling segmenter returned ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const preservedManualWrong = spellingStates.map(state => state.manualWrong === true);
+    spellingStates.forEach(state => {
+      state.status = "pending";
+      state.tokens = [];
+      state.entries = [];
+      state.typedAnswer = "";
+      state.correct = false;
+      state.manualWrong = false;
+      state.timestamp = null;
+      state.spelledCandidate = "";
+    });
+    items.forEach((item, idx) => {
+      const state = spellingStates[idx];
+      if (!state) {
+        return;
+      }
+      state.manualWrong = preservedManualWrong[idx] === true;
+      const responseText = (item?.response || "").trim();
+      state.typedAnswer = responseText;
+      if (responseText) {
+        const tokens = tokenize(responseText);
+        state.entries = [{ text: responseText, timestamp: Date.now(), tokens }];
+        state.tokens = tokens;
+        evaluateSpelling(state, spellingWords[idx]);
+        state.status = "completed";
+        state.timestamp = Date.now();
+      }
+    });
+    spellingCaptureState.status = "completed";
+    const firstPending = spellingStates.findIndex(state => state.status !== "completed");
+    loadSpelling(firstPending >= 0 ? firstPending : spellingWords.length - 1);
+  } catch (err) {
+    spellingCaptureState.status = "idle";
+    console.error("Spelling segmentation failed", err);
+    alert("Spelling segmentation failed. Check console/backend.");
+  } finally {
+    updateSpellingUI();
   }
 }
 
@@ -6821,37 +6948,45 @@ function updateDigitsUI() {
   dom.digitsProgressCount.textContent = `${digitsIndex + 1} / ${digitTrials.length}`;
 
   let statusLabel = "Idle";
-  if (state.status === "listening") {
+  if (digitsCaptureState.status === "listening") {
     statusLabel = "Listening";
-  } else if (state.status === "finishing") {
+  } else if (digitsCaptureState.status === "finishing") {
     statusLabel = "Finishing";
+  } else if (digitsCaptureState.status === "segmenting") {
+    statusLabel = "Segmenting";
   } else if (state.status === "completed") {
     statusLabel = state.correct ? "Correct" : "Recorded";
   }
   dom.digitsStatus.textContent = statusLabel;
   dom.digitsStatus.className =
-    state.status === "completed"
+    digitsCaptureState.status === "segmenting"
+      ? "status-badge listening"
+      : state.status === "completed"
       ? state.correct
         ? "status-badge completed"
         : "status-badge"
-      : state.status === "listening"
+      : digitsCaptureState.status === "listening"
       ? "status-badge listening"
       : "status-badge";
 
+  const busy =
+    digitsCaptureState.status === "listening" ||
+    digitsCaptureState.status === "finishing" ||
+    digitsCaptureState.status === "segmenting";
   if (dom.digitsStartBtn) {
-    dom.digitsStartBtn.disabled = !speechSupported || state.status === "listening" || digitsSessionEnded;
+    dom.digitsStartBtn.disabled = !speechSupported || busy;
   }
   if (dom.digitsStopBtn) {
-    dom.digitsStopBtn.disabled = state.status !== "listening";
+    dom.digitsStopBtn.disabled = digitsCaptureState.status !== "listening";
   }
   if (dom.digitsPrevBtn) {
-    dom.digitsPrevBtn.disabled = state.status === "listening" || digitsSessionEnded;
+    dom.digitsPrevBtn.disabled = busy;
   }
   if (dom.digitsNextBtn) {
-    dom.digitsNextBtn.disabled = state.status === "listening" || digitsSessionEnded;
+    dom.digitsNextBtn.disabled = busy;
   }
   if (dom.digitsResetBtn) {
-    dom.digitsResetBtn.disabled = state.status === "listening";
+    dom.digitsResetBtn.disabled = busy;
   }
 
   renderDigitsLive();
@@ -6859,34 +6994,102 @@ function updateDigitsUI() {
   renderDigitsLog();
 }
 
+async function segmentDigitsWithLLM() {
+  if (!DIGIT_SEGMENTER_URL) {
+    alert("Set window.DIGIT_SEGMENTER_URL before segmenting digits.");
+    return;
+  }
+  digitsCaptureState.status = "segmenting";
+  updateDigitsUI();
+  try {
+    const response = await fetch(DIGIT_SEGMENTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: digitsCaptureState.transcript,
+        trials: digitTrials
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Digit segmenter HTTP error", response.status, text);
+      throw new Error(`Digit segmenter returned ${response.status}`);
+    }
+    const data = await response.json();
+    applyDigitSegmentation(data);
+    digitsCaptureState.status = "completed";
+  } catch (err) {
+    digitsCaptureState.status = "idle";
+    console.error("Digit segmentation failed", err);
+    alert("Digit segmentation failed. Check console/backend.");
+  } finally {
+    updateDigitsUI();
+  }
+}
+
+function applyDigitSegmentation(result = {}) {
+  const items = Array.isArray(result.items) ? result.items : [];
+  resetDigitsResponses({ preserveManual: true });
+  items.forEach((item, idx) => {
+    const state = digitStates[idx];
+    if (!state) {
+      return;
+    }
+    const responseText = (item?.response || "").trim();
+    state.typedAnswer = responseText;
+    if (responseText) {
+      const digits = extractDigits(responseText);
+      state.entries = [
+        {
+          text: responseText,
+          timestamp: Date.now(),
+          digits
+        }
+      ];
+      state.digits = digits;
+      evaluateDigits(state, digitTrials[idx]);
+      state.status = "completed";
+      state.timestamp = Date.now();
+    }
+  });
+  const firstPending = digitStates.findIndex(state => state.status !== "completed");
+  if (firstPending >= 0) {
+    loadDigits(firstPending);
+  } else {
+    loadDigits(digitTrials.length - 1);
+  }
+}
+
 function renderDigitsLive() {
   if (!dom.digitsLiveWords) {
     return;
   }
-  const state = digitStates[digitsIndex];
-  const recentEntries = state.entries.slice(-4);
-  if (!recentEntries.length) {
+  const transcript = digitsCaptureState.transcript.trim();
+  if (!transcript) {
     dom.digitsLiveWords.innerHTML = '<span class="muted">No responses yet.</span>';
     return;
   }
-  const frag = document.createDocumentFragment();
-  recentEntries.forEach(entry => {
-    const chip = document.createElement("span");
-    chip.textContent = entry.text || "(blank)";
-    frag.appendChild(chip);
-  });
-  dom.digitsLiveWords.innerHTML = "";
-  dom.digitsLiveWords.appendChild(frag);
+  dom.digitsLiveWords.textContent = transcript;
 }
 
 function renderDigitsMatch() {
   if (!dom.digitsMatchStatus || !dom.digitsCandidate) {
     return;
   }
+  if (digitsCaptureState.status === "segmenting") {
+    dom.digitsMatchStatus.textContent = "Segmenting transcript";
+    dom.digitsCandidate.textContent = "Mapping the full digit-span transcript into trial responses.";
+    return;
+  }
   const state = digitStates[digitsIndex];
   if (!state.digits.length && !state.typedAnswer) {
-    dom.digitsMatchStatus.textContent = "No response yet";
-    dom.digitsCandidate.textContent = "";
+    if (digitsCaptureState.transcript.trim()) {
+      dom.digitsMatchStatus.textContent = "Transcript captured";
+      dom.digitsCandidate.textContent = "Click Done & Segment to populate the digit trials.";
+    } else {
+      dom.digitsMatchStatus.textContent = "No response yet";
+      dom.digitsCandidate.textContent = "";
+    }
     return;
   }
   const pill = document.createElement("span");
@@ -6904,6 +7107,8 @@ function renderDigitsLog() {
   let correctCount = 0;
   const frag = document.createDocumentFragment();
   digitStates.forEach((state, idx) => {
+    const pairStop =
+      idx % 2 === 1 && digitStates[idx - 1] && digitStates[idx - 1].manualWrong === true && state.manualWrong === true;
     const tr = document.createElement("tr");
     const trialTd = document.createElement("td");
     trialTd.textContent = idx + 1;
@@ -6928,17 +7133,43 @@ function renderDigitsLog() {
       state.status = "completed";
       updateDigitsUI();
     });
+    const manualTd = document.createElement("td");
+    const manualControls = document.createElement("div");
+    manualControls.className = "manual-score-controls";
+    const manualBtn = document.createElement("button");
+    manualBtn.type = "button";
+    manualBtn.className = `manual-score-btn ${state.manualWrong ? "selected-fail" : ""}`;
+    manualBtn.textContent = state.manualWrong ? "×" : "○";
+    manualBtn.title = state.manualWrong ? "Manual score: marked wrong" : "Click to mark this trial wrong";
+    manualBtn.addEventListener("click", () => {
+      state.manualWrong = !state.manualWrong;
+      updateDigitsUI();
+    });
+    manualControls.append(manualBtn);
+    manualTd.appendChild(manualControls);
     const resultTd = document.createElement("td");
-    if (state.status === "completed") {
-      const pill = document.createElement("span");
-      pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
-      pill.textContent = state.correct ? "Correct" : "Incorrect";
-      resultTd.appendChild(pill);
-      if (state.correct) {
+    if (state.status === "completed" || pairStop) {
+      const wrapper = document.createElement("span");
+      wrapper.className = "score-with-flag";
+      if (state.status === "completed") {
+        const pill = document.createElement("span");
+        pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
+        pill.textContent = state.correct ? "Correct" : "Incorrect";
+        wrapper.appendChild(pill);
+      }
+      if (pairStop) {
+        const flag = document.createElement("span");
+        flag.className = "score-flag";
+        flag.textContent = "Stop";
+        flag.title = "Both trials in this pair are manually marked wrong. Stop administration.";
+        wrapper.appendChild(flag);
+      }
+      resultTd.appendChild(wrapper);
+      if (state.status === "completed" && state.correct) {
         correctCount += 1;
       }
     }
-    tr.append(trialTd, targetTd, respTd, resultTd);
+    tr.append(trialTd, targetTd, respTd, manualTd, resultTd);
     frag.appendChild(tr);
   });
   dom.digitsLogBody.innerHTML = "";
@@ -7098,6 +7329,7 @@ function renderAlternationLog() {
   if (!dom.altLogBody) {
     return;
   }
+  const manualIncorrectIndex = alternationStates.findIndex(state => state.manualCorrect === false);
   let consecutiveCorrectCount = 0;
   let firstIncorrectSeen = false;
   const frag = document.createDocumentFragment();
@@ -7134,25 +7366,31 @@ function renderAlternationLog() {
     const manualTd = document.createElement("td");
     const manualControls = document.createElement("div");
     manualControls.className = "manual-score-controls";
-    const passBtn = document.createElement("button");
-    passBtn.type = "button";
-    passBtn.className = `manual-score-btn ${state.manualCorrect === true ? "selected-pass" : ""}`;
-    passBtn.textContent = "✓";
-    passBtn.title = "Manual score: correct";
-    passBtn.addEventListener("click", () => {
-      state.manualCorrect = state.manualCorrect === true ? null : true;
+    const manualBtn = document.createElement("button");
+    manualBtn.type = "button";
+    manualBtn.className = "manual-score-btn";
+    if (manualIncorrectIndex === -1) {
+      manualBtn.textContent = "○";
+      manualBtn.title = "Click this row if this is the first manual error.";
+    } else if (idx < manualIncorrectIndex) {
+      manualBtn.classList.add("selected-pass");
+      manualBtn.textContent = "✓";
+      manualBtn.title = "Manual score: correct";
+    } else if (idx === manualIncorrectIndex) {
+      manualBtn.classList.add("selected-fail");
+      manualBtn.textContent = "×";
+      manualBtn.title = "Manual score: incorrect";
+    } else {
+      manualBtn.textContent = "○";
+      manualBtn.title = "Not manually scored";
+    }
+    manualBtn.addEventListener("click", () => {
+      alternationStates.forEach((altState, altIdx) => {
+        altState.manualCorrect = altIdx === idx && manualIncorrectIndex !== idx ? false : null;
+      });
       updateAlternationUI();
     });
-    const failBtn = document.createElement("button");
-    failBtn.type = "button";
-    failBtn.className = `manual-score-btn ${state.manualCorrect === false ? "selected-fail" : ""}`;
-    failBtn.textContent = "×";
-    failBtn.title = "Manual score: incorrect";
-    failBtn.addEventListener("click", () => {
-      state.manualCorrect = state.manualCorrect === false ? null : false;
-      updateAlternationUI();
-    });
-    manualControls.append(passBtn, failBtn);
+    manualControls.append(manualBtn);
     manualTd.appendChild(manualControls);
     const resultTd = document.createElement("td");
     if (state.status === "completed") {
@@ -7162,8 +7400,10 @@ function renderAlternationLog() {
       pill.className = `match-pill ${state.correct ? "success" : "miss"}`;
       pill.textContent = state.correct ? "Correct" : "Incorrect";
       wrapper.appendChild(pill);
+      const derivedManualScore =
+        manualIncorrectIndex === -1 ? null : idx < manualIncorrectIndex ? true : idx === manualIncorrectIndex ? false : null;
       const hasManualConflict =
-        typeof state.manualCorrect === "boolean" && state.manualCorrect !== Boolean(state.correct);
+        typeof derivedManualScore === "boolean" && derivedManualScore !== Boolean(state.correct);
       if (hasManualConflict) {
         const flag = document.createElement("span");
         flag.className = "score-flag";
@@ -8133,6 +8373,70 @@ function syncSentenceResponsesFromInputs() {
   });
   updateSentenceUI();
 }
+
+function clearSentenceInputsAndScores() {
+  sentenceState.responses = Array(sentencePrompts.length).fill("");
+  if (dom.sentenceInputs) {
+    dom.sentenceInputs.forEach(input => {
+      input.value = "";
+    });
+  }
+  if (dom.sentenceScoreCells) {
+    dom.sentenceScoreCells.forEach(cell => {
+      cell.textContent = "";
+      cell.classList.remove("score-invalid");
+    });
+  }
+  if (dom.sentenceNoteCells) {
+    dom.sentenceNoteCells.forEach(cell => {
+      cell.textContent = "";
+    });
+  }
+  if (dom.sentenceSectionScore) {
+    dom.sentenceSectionScore.textContent = "0";
+  }
+}
+
+async function segmentSentencesWithLLM() {
+  if (!SENTENCE_SEGMENTER_URL) {
+    alert("Set window.SENTENCE_SEGMENTER_URL before segmenting sentences.");
+    return;
+  }
+  sentenceState.segmentStatus = "segmenting";
+  updateSentenceUI();
+  try {
+    const response = await fetch(SENTENCE_SEGMENTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: sentenceState.transcript,
+        prompts: sentencePrompts
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Sentence segmenter HTTP error", response.status, text);
+      throw new Error(`Sentence segmenter returned ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    items.forEach((item, idx) => {
+      const value = (item?.response || "").trim();
+      sentenceState.responses[idx] = value;
+      if (dom.sentenceInputs[idx]) {
+        dom.sentenceInputs[idx].value = value;
+      }
+    });
+    sentenceState.segmentStatus = "done";
+  } catch (err) {
+    sentenceState.segmentStatus = "idle";
+    console.error("Sentence segmentation failed", err);
+    alert("Sentence segmentation failed. Check console/backend.");
+  } finally {
+    updateSentenceUI();
+  }
+}
+
 function startSentenceListening() {
   if (!speechSupported || !recognition) {
     return;
@@ -8143,6 +8447,11 @@ function startSentenceListening() {
   if (sentenceState.status === "listening") {
     return;
   }
+  sentenceState.index = 0;
+  sentenceState.transcriptChunks = [];
+  sentenceState.transcript = "";
+  sentenceState.segmentStatus = "idle";
+  clearSentenceInputsAndScores();
   sentenceState.status = "listening";
   captureContext = { type: "sentence" };
   isStopping = false;
@@ -8155,11 +8464,10 @@ function stopSentenceListening() {
     return;
   }
   isStopping = true;
-  sentenceState.status = "pending";
+  sentenceState.status = "finishing";
   if (recognition) {
     recognition.stop();
   }
-  captureContext = null;
   updateSentenceUI();
 }
 
@@ -8174,13 +8482,14 @@ function updateSentenceUI() {
     dom.sentenceActiveLabel.textContent = `${sentenceState.index + 1}`;
   }
   if (dom.sentenceStartBtn) {
-    dom.sentenceStartBtn.disabled = !speechSupported || sentenceState.status === "listening";
+    dom.sentenceStartBtn.disabled =
+      !speechSupported || sentenceState.status === "listening" || sentenceState.segmentStatus === "segmenting";
   }
   if (dom.sentenceStopBtn) {
     dom.sentenceStopBtn.disabled = sentenceState.status !== "listening";
   }
   if (dom.sentenceNextBtn) {
-    dom.sentenceNextBtn.disabled = sentenceState.status === "listening";
+    dom.sentenceNextBtn.disabled = sentenceState.status === "listening" || sentenceState.segmentStatus === "segmenting";
   }
   if (dom.sentenceRows && dom.sentenceRows.length) {
     dom.sentenceRows.forEach((row, idx) => {
@@ -8188,8 +8497,14 @@ function updateSentenceUI() {
     });
   }
   if (dom.sentenceLiveWords) {
-    const val = dom.sentenceInputs[sentenceState.index]?.value || "";
-    dom.sentenceLiveWords.textContent = val || "No responses yet.";
+    if (sentenceState.segmentStatus === "segmenting") {
+      dom.sentenceLiveWords.textContent = "Segmenting full transcript into sentence responses...";
+    } else if (sentenceState.status === "listening") {
+      dom.sentenceLiveWords.textContent = sentenceState.transcript || "No responses yet.";
+    } else {
+      const val = sentenceState.transcript || dom.sentenceInputs[sentenceState.index]?.value || "";
+      dom.sentenceLiveWords.textContent = val || "No responses yet.";
+    }
   }
 }
 
@@ -8647,11 +8962,18 @@ function evaluateComprehension(state, question) {
 }
 
 function evaluateSpelling(state, target) {
-  const targetCanonical = canonicalize(target);
-  const voiceCandidate = buildSpelledCandidate(state.tokens || []);
-  const typedCandidate = canonicalize(state.typedAnswer || "");
+  const targetExact = normalizeSpellingLetters(target);
+  const voiceCandidate = normalizeSpellingLetters(buildSpelledCandidate(state.tokens || []));
+  const typedCandidate = normalizeSpellingLetters(state.typedAnswer || "");
   state.spelledCandidate = voiceCandidate || typedCandidate || "";
-  state.correct = state.spelledCandidate === targetCanonical || typedCandidate === targetCanonical;
+  state.correct = state.spelledCandidate === targetExact;
+}
+
+function normalizeSpellingLetters(text = "") {
+  return String(text)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
 }
 
 function tokenize(text = "") {

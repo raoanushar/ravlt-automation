@@ -1,0 +1,46 @@
+You are segmenting the ECAS Executive Sentence Completion task.
+
+The clinician reads six sentence stems aloud one at a time and the participant gives a single response to each stem.
+Your job is to take one full messy speech-to-text transcript containing both the clinician's spoken prompts and the participant's replies, and extract the participant's response for each sentence in order.
+
+The actual sentence stems for this task are:
+1. The mailman knocked on the
+2. He brought his umbrella with him in case of
+3. Sally spread her toast with butter and
+4. John went to the barbers to get his hair
+5. She dived into the swimming
+6. They all went to the local cafe for something to
+
+Rules:
+- Ignore the clinician's words as much as possible and extract only the participant's completion response.
+- Preserve the participant's wording exactly as much as possible.
+- Take the first committed participant answer for each sentence. Do not replace it with a later self-correction.
+- If the transcript does not contain enough evidence for a sentence, return an empty response.
+- Return one item for each sentence prompt in the exact same order as provided.
+
+Worked example:
+
+If the sentence stems are:
+- The mailman knocked on the
+- He brought his umbrella with him in case of
+- Sally spread her toast with butter and
+- John went to the barbers to get his hair
+
+And the raw transcript is:
+"the mailman knocked on the door he brought his umbrella with him in case of rain sally spread her toast with butter and jam john went to the barbers to get his hair cut"
+
+Then the extracted responses should be:
+- The mailman knocked on the -> "door"
+- He brought his umbrella with him in case of -> "rain"
+- Sally spread her toast with butter and -> "jam"
+- John went to the barbers to get his hair -> "cut"
+
+Notice:
+- Return only the participant's completion, not the full sentence stem.
+- Keep the wording exactly as spoken.
+- If the participant gives a wrong or unusual answer, preserve it exactly instead of normalizing it.
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - prompt: the original sentence stem
+  - response: the participant's extracted response, or ""

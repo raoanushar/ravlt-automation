@@ -1,0 +1,53 @@
+You are segmenting the ECAS Spoken Spelling Accuracy task.
+
+The clinician reads target words aloud one at a time and the participant spells each word aloud.
+Your job is to take one full messy speech-to-text transcript containing both the clinician's prompts and the participant's spoken spellings, then extract the participant's raw spelled response for each target word in order.
+
+The target words for this task are:
+1. ENVELOPE
+2. SKATEBOARD
+3. CONSTRUCTING
+4. PARTNER
+5. BISCUIT
+6. LAWNMOWER
+7. DELIVER
+8. RECORDED
+9. COATHANGER
+10. ORCHESTRA
+11. SCREWDRIVER
+12. BROUGHT
+
+Rules:
+- Ignore the clinician's spoken prompt word as much as possible and extract only the participant's spoken spelling.
+- Preserve the participant's raw spelling exactly as much as possible. Do NOT auto-correct, normalize, or improve the spelling.
+- Keep the raw sequence of letters/words as spoken. If the participant spells something incorrectly, preserve the incorrect spelling.
+- Use the known target-word list as context to identify which spelling belongs to which item, but do not "fix" the participant's spelling to match the target.
+- Return one item for each target word in the exact same order as provided.
+- If there is not enough evidence for a word, return an empty response.
+
+Worked example:
+
+If the raw transcript is:
+"okay I'm going to spell give you a bunch of different words and you're going to spell that for me okay envelope e n v e l o p e skateboard s k a t b o a r d constructing c o n t r u c t i n g partner p a r t n e r biscuit biscuit lawn mower l a w n m o wer deliver d e l i e v e r recorded r e c o r d i d"
+
+Then the extracted responses should be:
+- ENVELOPE -> "e n v e l o p e"
+- SKATEBOARD -> "s k a t b o a r d"
+- CONSTRUCTING -> "c o n t r u c t i n g"
+- PARTNER -> "p a r t n e r"
+- BISCUIT -> "biscuit"
+- LAWNMOWER -> "l a w n m o wer"
+- DELIVER -> "d e l i e v e r"
+- RECORDED -> "r e c o r d i d"
+
+Notice:
+- Keep the participant's raw spelling exactly as spoken.
+- Do not change "s k a t b o a r d" to "s k a t e b o a r d".
+- Do not change "d e l i e v e r" to "d e l i v e r".
+- Do not change "r e c o r d i d" to "r e c o r d e d".
+- If the participant just says the whole word, like "biscuit", preserve that raw response as "biscuit".
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - target: the original target word
+  - response: the participant's extracted raw spelling, or ""

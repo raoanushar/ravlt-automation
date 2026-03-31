@@ -87,6 +87,33 @@ class SentenceScore(BaseModel):
     total: int
 
 
+class SentenceSegmentItem(BaseModel):
+    prompt: str
+    response: str
+
+
+class SentenceSegmentation(BaseModel):
+    items: list[SentenceSegmentItem]
+
+
+class DigitSegmentItem(BaseModel):
+    target: str
+    response: str
+
+
+class DigitSegmentation(BaseModel):
+    items: list[DigitSegmentItem]
+
+
+class SpellingSegmentItem(BaseModel):
+    target: str
+    response: str
+
+
+class SpellingSegmentation(BaseModel):
+    items: list[SpellingSegmentItem]
+
+
 class AlternationItem(BaseModel):
     trial: int
     target: str
@@ -125,6 +152,166 @@ Examples:
 Return JSON with:
 - items: array of {prompt (optional), response, score (0-2), rationale (short explanation of why the score was assigned + include note of repetition if needed)}
 - total: sum of scores
+"""
+
+SENTENCE_SEGMENT_PROMPT = """
+You are segmenting the ECAS Executive Sentence Completion task.
+
+The clinician reads six sentence stems aloud one at a time and the participant gives a single response to each stem.
+Your job is to take one full messy speech-to-text transcript containing both the clinician's spoken prompts and the participant's replies, and extract the participant's response for each sentence in order.
+
+The actual sentence stems for this task are:
+1. The mailman knocked on the
+2. He brought his umbrella with him in case of
+3. Sally spread her toast with butter and
+4. John went to the barbers to get his hair
+5. She dived into the swimming
+6. They all went to the local cafe for something to
+
+Rules:
+- Ignore the clinician's words as much as possible and extract only the participant's completion response.
+- Preserve the participant's wording exactly as much as possible.
+- Take the first committed participant answer for each sentence. Do not replace it with a later self-correction.
+- If the transcript does not contain enough evidence for a sentence, return an empty response.
+- Return one item for each sentence prompt in the exact same order as provided.
+
+Worked example:
+
+If the sentence stems are:
+- The mailman knocked on the
+- He brought his umbrella with him in case of
+- Sally spread her toast with butter and
+- John went to the barbers to get his hair
+
+And the raw transcript is:
+"the mailman knocked on the door he brought his umbrella with him in case of rain sally spread her toast with butter and jam john went to the barbers to get his hair cut"
+
+Then the extracted responses should be:
+- The mailman knocked on the -> "door"
+- He brought his umbrella with him in case of -> "rain"
+- Sally spread her toast with butter and -> "jam"
+- John went to the barbers to get his hair -> "cut"
+
+Notice:
+- Return only the participant's completion, not the full sentence stem.
+- Keep the wording exactly as spoken.
+- If the participant gives a wrong or unusual answer, preserve it exactly instead of normalizing it.
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - prompt: the original sentence stem
+  - response: the participant's extracted response, or ""
+"""
+
+DIGIT_SEGMENT_PROMPT = """
+You are segmenting the ECAS Executive Digit Span Backwards task.
+
+The clinician reads digit sequences aloud one at a time and the participant repeats each sequence in reverse order.
+Your job is to take one full messy speech-to-text transcript containing both the clinician's prompts and the participant's responses, then extract the participant's response for each target trial in order.
+
+The actual target trials for this task are:
+1. 2 6
+2. 5 8
+3. 9 3 5
+4. 4 1 6
+5. 7 2 8 4
+6. 9 5 7 3
+7. 6 9 4 2 1
+8. 8 3 2 5 6
+9. 8 1 3 5 7 9
+10. 3 6 2 7 3 4
+11. 1 6 9 3 5 8 6
+12. 2 3 6 8 4 9 2
+
+Rules:
+- Ignore the clinician's spoken prompt digits as much as possible and extract only the participant's spoken response.
+- Preserve the participant's wording/digits exactly as much as possible.
+- Keep the participant's response exactly as spoken, even if it is wrong, incomplete, repeated, or not fully reversed.
+- Return one item for each target trial in the exact same order as provided.
+- If there is not enough evidence for a trial, return an empty response.
+
+Worked example:
+
+If the target trials are:
+- 2 6
+- 5 8
+- 9 3 5
+- 4 1 6
+
+And the raw transcript is:
+"two six six two five eight eight five nine three five five three nine four one six six one"
+
+Then the extracted responses should be:
+- 2 6 -> "6 2"
+- 5 8 -> "8 5"
+- 9 3 5 -> "5 3 9"
+- 4 1 6 -> "6 1"
+
+Notice:
+- Keep the response matched to each target trial in chronological order.
+- Preserve mistakes exactly as spoken. Do not complete or correct "6 1" into "6 1 4".
+- Do not include the clinician's prompt digits in the response field.
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - target: the original target digit sequence
+  - response: the participant's extracted response, or ""
+"""
+
+SPELLING_SEGMENT_PROMPT = """
+You are segmenting the ECAS Spoken Spelling Accuracy task.
+
+The clinician reads target words aloud one at a time and the participant spells each word aloud.
+Your job is to take one full messy speech-to-text transcript containing both the clinician's prompts and the participant's spoken spellings, then extract the participant's raw spelled response for each target word in order.
+
+The target words for this task are:
+1. ENVELOPE
+2. SKATEBOARD
+3. CONSTRUCTING
+4. PARTNER
+5. BISCUIT
+6. LAWNMOWER
+7. DELIVER
+8. RECORDED
+9. COATHANGER
+10. ORCHESTRA
+11. SCREWDRIVER
+12. BROUGHT
+
+Rules:
+- Ignore the clinician's spoken prompt word as much as possible and extract only the participant's spoken spelling.
+- Preserve the participant's raw spelling exactly as much as possible. Do NOT auto-correct, normalize, or improve the spelling.
+- Keep the raw sequence of letters/words as spoken. If the participant spells something incorrectly, preserve the incorrect spelling.
+- Use the known target-word list as context to identify which spelling belongs to which item, but do not "fix" the participant's spelling to match the target.
+- Return one item for each target word in the exact same order as provided.
+- If there is not enough evidence for a word, return an empty response.
+
+Worked example:
+
+If the raw transcript is:
+"okay I'm going to spell give you a bunch of different words and you're going to spell that for me okay envelope e n v e l o p e skateboard s k a t b o a r d constructing c o n t r u c t i n g partner p a r t n e r biscuit biscuit lawn mower l a w n m o wer deliver d e l i e v e r recorded r e c o r d i d"
+
+Then the extracted responses should be:
+- ENVELOPE -> "e n v e l o p e"
+- SKATEBOARD -> "s k a t b o a r d"
+- CONSTRUCTING -> "c o n t r u c t i n g"
+- PARTNER -> "p a r t n e r"
+- BISCUIT -> "biscuit"
+- LAWNMOWER -> "l a w n m o wer"
+- DELIVER -> "d e l i e v e r"
+- RECORDED -> "r e c o r d i d"
+
+Notice:
+- Keep the participant's raw spelling exactly as spoken.
+- Do not change "s k a t b o a r d" to "s k a t e b o a r d".
+- Do not change "d e l i e v e r" to "d e l i v e r".
+- Do not change "r e c o r d i d" to "r e c o r d e d".
+- If the participant just says the whole word, like "biscuit", preserve that raw response as "biscuit".
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - target: the original target word
+  - response: the participant's extracted raw spelling, or ""
 """
 
 FLUENCY_T_PROMPT = """
@@ -291,6 +478,9 @@ def config_js():
     fluency_url = os.getenv("FLUENCY_SCORER_URL", "")
     fluency_t_url = os.getenv("FLUENCY_T_SCORER_URL", "")
     sentence_url = os.getenv("SENTENCE_SCORER_URL", "")
+    sentence_segment_url = os.getenv("SENTENCE_SEGMENTER_URL", "")
+    digit_segment_url = os.getenv("DIGIT_SEGMENTER_URL", "")
+    spelling_segment_url = os.getenv("SPELLING_SEGMENTER_URL", "")
     alternation_url = os.getenv("ALTERNATION_SCORER_URL", "")
     js = (
         "window.SUPABASE_URL = "
@@ -305,6 +495,12 @@ def config_js():
         + json.dumps(fluency_t_url or "/score-fluency-t")
         + ";\nwindow.SENTENCE_SCORER_URL = "
         + json.dumps(sentence_url or "/score-sentences")
+        + ";\nwindow.SENTENCE_SEGMENTER_URL = "
+        + json.dumps(sentence_segment_url or "/segment-sentences")
+        + ";\nwindow.DIGIT_SEGMENTER_URL = "
+        + json.dumps(digit_segment_url or "/segment-digits")
+        + ";\nwindow.SPELLING_SEGMENTER_URL = "
+        + json.dumps(spelling_segment_url or "/segment-spelling")
         + ";\nwindow.ALTERNATION_SCORER_URL = "
         + json.dumps(alternation_url or "/segment-alternation")
         + ";\n"
@@ -514,6 +710,135 @@ def segment_alternation():
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("Alternation OpenAI call failed")
         return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+    return jsonify(payload)
+
+
+@app.route("/segment-sentences", methods=["POST", "OPTIONS"])
+def segment_sentences():
+    if request.method == "OPTIONS":
+        logging.info("Sentence segmentation OPTIONS preflight received.")
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    if not client.api_key:
+        logging.error("OPENAI_API_KEY not set")
+        return jsonify({"error": "OPENAI_API_KEY not set"}), 400
+
+    data = request.get_json(force=True) or {}
+    transcript = data.get("transcript", "") or ""
+    prompts = data.get("prompts", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or load_prompt_file("sentence_segment.txt", SENTENCE_SEGMENT_PROMPT)
+    prompt_lines = [f"{idx}. {prompt}" for idx, prompt in enumerate(prompts, start=1)]
+    try:
+        completion = client.chat.completions.parse(
+            model="gpt-5.1",
+            messages=[
+                {"role": "system", "content": "You segment ECAS sentence completion transcripts into prompt-level responses."},
+                {
+                    "role": "user",
+                    "content": f"{prompt_text}\n\nSentence prompts:\n" + "\n".join(prompt_lines) + f"\n\nRaw transcript:\n{transcript}",
+                },
+            ],
+            response_format=SentenceSegmentation,
+        )
+        parsed: SentenceSegmentation = completion.choices[0].message.parsed
+        payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
+        logging.info("Sentence segmentation OpenAI call succeeded.")
+    except Exception as err:  # pylint: disable=broad-except
+        logging.exception("Sentence segmentation OpenAI call failed")
+        return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+
+    return jsonify(payload)
+
+
+@app.route("/segment-digits", methods=["POST", "OPTIONS"])
+def segment_digits():
+    if request.method == "OPTIONS":
+        logging.info("Digit segmentation OPTIONS preflight received.")
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    if not client.api_key:
+        logging.error("OPENAI_API_KEY not set")
+        return jsonify({"error": "OPENAI_API_KEY not set"}), 400
+
+    data = request.get_json(force=True) or {}
+    transcript = data.get("transcript", "") or ""
+    trials = data.get("trials", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or load_prompt_file("digit_segment.txt", DIGIT_SEGMENT_PROMPT)
+    trial_lines = [f"{idx}. {trial}" for idx, trial in enumerate(trials, start=1)]
+    try:
+        completion = client.chat.completions.parse(
+            model="gpt-5.1",
+            messages=[
+                {"role": "system", "content": "You segment ECAS digit span transcripts into trial-level responses."},
+                {
+                    "role": "user",
+                    "content": f"{prompt_text}\n\nTarget trials:\n" + "\n".join(trial_lines) + f"\n\nRaw transcript:\n{transcript}",
+                },
+            ],
+            response_format=DigitSegmentation,
+        )
+        parsed: DigitSegmentation = completion.choices[0].message.parsed
+        payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
+        logging.info("Digit segmentation OpenAI call succeeded.")
+    except Exception as err:  # pylint: disable=broad-except
+        logging.exception("Digit segmentation OpenAI call failed")
+        return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+
+    return jsonify(payload)
+
+
+@app.route("/segment-spelling", methods=["POST", "OPTIONS"])
+def segment_spelling():
+    if request.method == "OPTIONS":
+        logging.info("Spelling segmentation OPTIONS preflight received.")
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    if not client.api_key:
+        logging.error("OPENAI_API_KEY not set")
+        return jsonify({"error": "OPENAI_API_KEY not set"}), 400
+
+    data = request.get_json(force=True) or {}
+    transcript = data.get("transcript", "") or ""
+    targets = data.get("targets", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or load_prompt_file("spelling_segment.txt", SPELLING_SEGMENT_PROMPT)
+    target_lines = [f"{idx}. {target}" for idx, target in enumerate(targets, start=1)]
+    try:
+        completion = client.chat.completions.parse(
+            model="gpt-5.1",
+            messages=[
+                {"role": "system", "content": "You segment ECAS spoken spelling transcripts into target-level raw spellings."},
+                {
+                    "role": "user",
+                    "content": f"{prompt_text}\n\nTarget words:\n" + "\n".join(target_lines) + f"\n\nRaw transcript:\n{transcript}",
+                },
+            ],
+            response_format=SpellingSegmentation,
+        )
+        parsed: SpellingSegmentation = completion.choices[0].message.parsed
+        payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
+        logging.info("Spelling segmentation OpenAI call succeeded.")
+    except Exception as err:  # pylint: disable=broad-except
+        logging.exception("Spelling segmentation OpenAI call failed")
+        return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+
     return jsonify(payload)
 
 
