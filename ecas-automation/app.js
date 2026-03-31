@@ -436,6 +436,8 @@ const dom = {
   sessionNewBtn: document.getElementById("session-new-btn"),
   sessionResetBtn: document.getElementById("session-reset-btn"),
   sessionSaveStatus: document.getElementById("session-save-status"),
+  sessionTotalTimer: document.getElementById("session-total-timer"),
+  sessionSectionTimers: document.getElementById("session-section-timers"),
   dotsStatus: document.getElementById("dots-status"),
   dotsProgressCount: document.getElementById("dots-progress-count"),
   dotsProgressFill: document.getElementById("dots-progress-fill"),
@@ -592,6 +594,13 @@ let dotsSessionEnded = false;
 let cubesSessionEnded = false;
 let numberlocSessionEnded = false;
 const sessionTimers = new Map();
+const sessionTimerState = {
+  activeSectionId: null,
+  totalElapsedMs: 0,
+  totalStartTime: null,
+  listenersBound: false,
+  intervalId: null
+};
 let sessionSaveTimer = null;
 let sessionSaveInFlight = false;
 const storyState = {
@@ -1582,7 +1591,7 @@ function resetSessionStorage() {
     localStorage.removeItem(participantChannelName);
     localStorage.removeItem(`${participantChannelName}-fluency`);
   } catch (err) {}
-  sessionTimers.forEach((_, sectionId) => resetSessionTimer(sectionId));
+  resetAllSessionTimers();
   if (dom.sessionSaveStatus) {
     dom.sessionSaveStatus.textContent = "";
   }
@@ -2406,13 +2415,18 @@ function extractFluencyRationales(state) {
 }
 
 function serializeSessionTimers() {
+  const now = Date.now();
   const result = {};
   sessionTimers.forEach((timer, sectionId) => {
     result[sectionId] = {
-      elapsedMs: timer.elapsedMs,
-      running: Boolean(timer.intervalId)
+      elapsedMs: getTimerElapsedMs(timer, now),
+      running: Boolean(timer.running)
     };
   });
+  result.total_test = {
+    elapsedMs: getTotalTimerElapsedMs(now),
+    running: Boolean(sessionTimerState.totalStartTime)
+  };
   return result;
 }
 
@@ -2453,82 +2467,74 @@ function setupSentenceScoreEditing() {
 }
 
 function setupSessionTimers() {
-  document.querySelectorAll("section.stage-card").forEach(section => {
-    const sectionId = section.getAttribute("id") || `section-${sessionTimers.size + 1}`;
-    if (sectionId === "agent-prompts-card" || sectionId === "overall-scores-card" || sectionId === "session-card") {
-      return;
+  sessionTimers.clear();
+  const timerList = dom.sessionSectionTimers;
+  if (timerList) {
+    timerList.innerHTML = "";
+  }
+  const sections = Array.from(document.querySelectorAll("#tab-assessment section.stage-card"))
+    .map(section => ({
+      id: section.getAttribute("id"),
+      label: section.querySelector("h2")?.textContent?.trim() || ""
+    }))
+    .filter(section => section.id)
+    .filter(section => section.id !== "session-card" && section.id !== "overall-scores-card");
+
+  sections.forEach(section => {
+    const row = document.createElement("div");
+    row.className = "session-timer-row";
+    const label = document.createElement("span");
+    label.className = "session-timer-label";
+    label.textContent = section.label || section.id;
+    const value = document.createElement("span");
+    value.className = "session-duration";
+    value.textContent = "00:00";
+    row.append(label, value);
+    if (timerList) {
+      timerList.appendChild(row);
     }
-    if (sessionTimers.has(sectionId)) {
-      return;
-    }
-    const display = document.createElement("span");
-    display.className = "session-duration";
-    display.textContent = "00:00";
-
-    const startBtn = document.createElement("button");
-    startBtn.type = "button";
-    startBtn.className = "ghost";
-    startBtn.textContent = "Start Session";
-
-    const endBtn = document.createElement("button");
-    endBtn.type = "button";
-    endBtn.className = "ghost";
-    endBtn.textContent = "End Session";
-
-    const controls = document.createElement("div");
-    controls.className = "session-controls";
-    controls.append(startBtn, endBtn, display);
-
-    const header = section.querySelector(".stage-header");
-    if (header) {
-      header.appendChild(controls);
-    } else {
-      section.insertBefore(controls, section.firstChild);
-    }
-
-    const timerState = {
+    sessionTimers.set(section.id, {
       startTime: null,
       elapsedMs: 0,
-      intervalId: null,
-      display
-    };
-    sessionTimers.set(sectionId, timerState);
-
-    startBtn.addEventListener("click", () => startSessionTimer(sectionId));
-    endBtn.addEventListener("click", () => stopSessionTimer(sectionId));
-
-    const resetButtons = section.querySelectorAll("button.ghost.danger");
-    resetButtons.forEach(btn => {
-      if (btn.textContent.toLowerCase().includes("reset")) {
-        btn.addEventListener("click", () => resetSessionTimer(sectionId));
-      }
+      running: false,
+      display: value
     });
   });
+
+  if (dom.sessionTotalTimer) {
+    dom.sessionTotalTimer.textContent = "00:00";
+  }
+
+  if (!sessionTimerState.listenersBound) {
+    document.addEventListener("click", handleSessionTimerInteraction, true);
+    document.addEventListener("input", handleSessionTimerInteraction, true);
+    document.addEventListener("change", handleSessionTimerInteraction, true);
+    sessionTimerState.listenersBound = true;
+  }
 }
 
 function startSessionTimer(sectionId) {
   const state = sessionTimers.get(sectionId);
-  if (!state || state.intervalId) {
+  if (!state) {
     return;
   }
-  state.startTime = Date.now();
-  state.intervalId = setInterval(() => {
-    const elapsed = Date.now() - state.startTime + state.elapsedMs;
-    state.display.textContent = formatDuration(elapsed);
-  }, 500);
+  activateSessionTimer(sectionId);
 }
 
 function stopSessionTimer(sectionId) {
   const state = sessionTimers.get(sectionId);
-  if (!state || !state.intervalId) {
+  if (!state || !state.running) {
     return;
   }
   const now = Date.now();
-  state.elapsedMs += now - state.startTime;
-  clearInterval(state.intervalId);
-  state.intervalId = null;
+  state.elapsedMs = getTimerElapsedMs(state, now);
+  state.running = false;
   state.startTime = null;
   state.display.textContent = formatDuration(state.elapsedMs);
+  if (sessionTimerState.activeSectionId === sectionId) {
+    sessionTimerState.activeSectionId = null;
+  }
+  updateSessionTimerIntervalState();
 }
 
 function resetSessionTimer(sectionId) {
@@ -2536,13 +2542,115 @@ function resetSessionTimer(sectionId) {
   if (!state) {
     return;
   }
-  if (state.intervalId) {
-    clearInterval(state.intervalId);
-  }
-  state.intervalId = null;
+  state.running = false;
   state.startTime = null;
   state.elapsedMs = 0;
   state.display.textContent = "00:00";
+  if (sessionTimerState.activeSectionId === sectionId) {
+    sessionTimerState.activeSectionId = null;
+  }
+  updateSessionTimerIntervalState();
+}
+
+function resetAllSessionTimers() {
+  sessionTimerState.totalElapsedMs = 0;
+  sessionTimerState.totalStartTime = null;
+  sessionTimerState.activeSectionId = null;
+  sessionTimers.forEach((_, sectionId) => resetSessionTimer(sectionId));
+  if (dom.sessionTotalTimer) {
+    dom.sessionTotalTimer.textContent = "00:00";
+  }
+  updateSessionTimerIntervalState();
+}
+
+function activateSessionTimer(sectionId) {
+  if (!sectionId || !sessionTimers.has(sectionId)) {
+    return;
+  }
+  const now = Date.now();
+  if (!sessionTimerState.totalStartTime) {
+    sessionTimerState.totalStartTime = now;
+  }
+  if (sessionTimerState.activeSectionId && sessionTimerState.activeSectionId !== sectionId) {
+    stopSessionTimer(sessionTimerState.activeSectionId);
+  }
+  const state = sessionTimers.get(sectionId);
+  if (!state.running) {
+    state.running = true;
+    state.startTime = now;
+  }
+  sessionTimerState.activeSectionId = sectionId;
+  updateSessionTimerDisplays();
+  updateSessionTimerIntervalState();
+}
+
+function getTimerElapsedMs(timer, now = Date.now()) {
+  if (!timer) {
+    return 0;
+  }
+  if (timer.running && timer.startTime) {
+    return timer.elapsedMs + (now - timer.startTime);
+  }
+  return timer.elapsedMs;
+}
+
+function getTotalTimerElapsedMs(now = Date.now()) {
+  if (!sessionTimerState.totalStartTime) {
+    return sessionTimerState.totalElapsedMs;
+  }
+  return sessionTimerState.totalElapsedMs + (now - sessionTimerState.totalStartTime);
+}
+
+function updateSessionTimerDisplays() {
+  const now = Date.now();
+  sessionTimers.forEach(timer => {
+    if (timer.display) {
+      timer.display.textContent = formatDuration(getTimerElapsedMs(timer, now));
+    }
+  });
+  if (dom.sessionTotalTimer) {
+    dom.sessionTotalTimer.textContent = formatDuration(getTotalTimerElapsedMs(now));
+  }
+}
+
+function updateSessionTimerIntervalState() {
+  const anyRunning =
+    Boolean(sessionTimerState.totalStartTime) || Array.from(sessionTimers.values()).some(timer => timer.running);
+  if (anyRunning && !sessionTimerState.intervalId) {
+    sessionTimerState.intervalId = window.setInterval(updateSessionTimerDisplays, 500);
+  } else if (!anyRunning && sessionTimerState.intervalId) {
+    window.clearInterval(sessionTimerState.intervalId);
+    sessionTimerState.intervalId = null;
+  }
+}
+
+function handleSessionTimerInteraction(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+  if (!shouldTrackSessionTimerInteraction(event)) {
+    return;
+  }
+  const section = target.closest("#tab-assessment section.stage-card");
+  const sectionId = section?.getAttribute("id") || "";
+  if (!sectionId || !sessionTimers.has(sectionId)) {
+    return;
+  }
+  activateSessionTimer(sectionId);
+}
+
+function shouldTrackSessionTimerInteraction(event) {
+  if (!(event.target instanceof Element)) {
+    return false;
+  }
+  if (event.type === "click") {
+    return Boolean(event.target.closest("button, .image-option, .social-option, .pill-btn"));
+  }
+  if (event.type === "input" || event.type === "change") {
+    return Boolean(event.target.closest("input, textarea, select"));
+  }
+  return false;
 }
 
 function formatDuration(ms) {
@@ -4447,7 +4555,7 @@ function buildParticipantPayload() {
     }
   }
   const delayedRecognitionStarted =
-    sessionTimers.get("delayed-recognition-card")?.elapsedMs > 0 ||
+    getTimerElapsedMs(sessionTimers.get("delayed-recognition-card")) > 0 ||
     delayedRecognitionStates.some(state => state.answer !== null);
   if (delayedRecognitionStarted) {
     section = "delayed-recognition";

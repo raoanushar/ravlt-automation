@@ -258,6 +258,41 @@ header h1 {
   margin-top: 0.75rem;
 }
 
+.session-timers {
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.session-timer-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.session-timer-total #session-total-timer {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.session-timer-list {
+  margin-top: 0.55rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.session-timer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.session-timer-label {
+  color: var(--muted);
+}
+
 .session-duration {
   font-weight: 700;
   color: var(--text);
