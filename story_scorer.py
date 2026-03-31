@@ -96,6 +96,15 @@ class SentenceSegmentation(BaseModel):
     items: list[SentenceSegmentItem]
 
 
+class ComprehensionSegmentItem(BaseModel):
+    prompt: str
+    response: str
+
+
+class ComprehensionSegmentation(BaseModel):
+    items: list[ComprehensionSegmentItem]
+
+
 class DigitSegmentItem(BaseModel):
     target: str
     response: str
@@ -201,6 +210,43 @@ Return ONLY JSON with:
 - items: array of objects with:
   - prompt: the original sentence stem
   - response: the participant's extracted response, or ""
+"""
+
+COMPREHENSION_SEGMENT_PROMPT = """
+You are segmenting the ECAS Language Comprehension task (Sentence to picture matching).
+
+The clinician reads a prompt aloud, and the participant responds by saying a word/phrase (or discussing choices) that indicates which picture matches.
+Your job is to take one full messy speech-to-text transcript containing both clinician speech and participant speech, then extract the participant response for each prompt in order.
+
+The actual prompts are:
+1. Something you can fly in
+2. Something with webbed feet
+3. An animal that climbs trees
+4. Something used for chopping
+5. A means of transportation
+6. Something with a sharp edge
+7. Something with a sting
+8. Something with a diet of nuts and seeds
+
+Likely picture labels in this section are:
+- Helicopter
+- Swan
+- Squirrel
+- Axe
+- Scorpion
+
+Rules:
+- Ignore the clinician prompt text as much as possible.
+- Keep only the participant response for each prompt.
+- Preserve participant wording exactly; do not auto-correct or normalize.
+- If the participant self-corrects within a prompt, keep the latest committed answer for that prompt.
+- If there is not enough evidence for a prompt, return an empty response.
+- Return one item per prompt in the exact same order as provided.
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - prompt: the original prompt
+  - response: extracted participant response, or ""
 """
 
 DIGIT_SEGMENT_PROMPT = """
@@ -479,6 +525,7 @@ def config_js():
     fluency_t_url = os.getenv("FLUENCY_T_SCORER_URL", "")
     sentence_url = os.getenv("SENTENCE_SCORER_URL", "")
     sentence_segment_url = os.getenv("SENTENCE_SEGMENTER_URL", "")
+    comprehension_segment_url = os.getenv("COMPREHENSION_SEGMENTER_URL", "")
     digit_segment_url = os.getenv("DIGIT_SEGMENTER_URL", "")
     spelling_segment_url = os.getenv("SPELLING_SEGMENTER_URL", "")
     alternation_url = os.getenv("ALTERNATION_SCORER_URL", "")
@@ -497,6 +544,8 @@ def config_js():
         + json.dumps(sentence_url or "/score-sentences")
         + ";\nwindow.SENTENCE_SEGMENTER_URL = "
         + json.dumps(sentence_segment_url or "/segment-sentences")
+        + ";\nwindow.COMPREHENSION_SEGMENTER_URL = "
+        + json.dumps(comprehension_segment_url or "/segment-comprehension")
         + ";\nwindow.DIGIT_SEGMENTER_URL = "
         + json.dumps(digit_segment_url or "/segment-digits")
         + ";\nwindow.SPELLING_SEGMENTER_URL = "
@@ -751,6 +800,57 @@ def segment_sentences():
         logging.info("Sentence segmentation OpenAI call succeeded.")
     except Exception as err:  # pylint: disable=broad-except
         logging.exception("Sentence segmentation OpenAI call failed")
+        return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+
+    return jsonify(payload)
+
+
+@app.route("/segment-comprehension", methods=["POST", "OPTIONS"])
+def segment_comprehension():
+    if request.method == "OPTIONS":
+        logging.info("Comprehension segmentation OPTIONS preflight received.")
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    if not client.api_key:
+        logging.error("OPENAI_API_KEY not set")
+        return jsonify({"error": "OPENAI_API_KEY not set"}), 400
+
+    data = request.get_json(force=True) or {}
+    transcript = data.get("transcript", "") or ""
+    prompts = data.get("prompts", []) or []
+    labels = data.get("labels", []) or []
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or load_prompt_file("comprehension_segment.txt", COMPREHENSION_SEGMENT_PROMPT)
+    prompt_lines = [f"{idx}. {prompt}" for idx, prompt in enumerate(prompts, start=1)]
+    label_lines = [f"{idx}. {label}" for idx, label in enumerate(labels, start=1)]
+    try:
+        completion = client.chat.completions.parse(
+            model="gpt-5.1",
+            messages=[
+                {"role": "system", "content": "You segment ECAS sentence-to-picture transcripts into prompt-level participant responses."},
+                {
+                    "role": "user",
+                    "content": (
+                        f"{prompt_text}\n\nSentence prompts:\n"
+                        + "\n".join(prompt_lines)
+                        + "\n\nPicture labels:\n"
+                        + "\n".join(label_lines)
+                        + f"\n\nRaw transcript:\n{transcript}"
+                    ),
+                },
+            ],
+            response_format=ComprehensionSegmentation,
+        )
+        parsed: ComprehensionSegmentation = completion.choices[0].message.parsed
+        payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
+        logging.info("Comprehension segmentation OpenAI call succeeded.")
+    except Exception as err:  # pylint: disable=broad-except
+        logging.exception("Comprehension segmentation OpenAI call failed")
         return jsonify({"error": "llm_failed", "detail": str(err)}), 500
 
     return jsonify(payload)

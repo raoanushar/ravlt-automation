@@ -12,6 +12,7 @@
       window.FLUENCY_T_SCORER_URL = window.FLUENCY_T_SCORER_URL || "/score-fluency-t";
       window.SENTENCE_SCORER_URL = window.SENTENCE_SCORER_URL || "/score-sentences";
       window.SENTENCE_SEGMENTER_URL = window.SENTENCE_SEGMENTER_URL || "/segment-sentences";
+      window.COMPREHENSION_SEGMENTER_URL = window.COMPREHENSION_SEGMENTER_URL || "/segment-comprehension";
       window.DIGIT_SEGMENTER_URL = window.DIGIT_SEGMENTER_URL || "/segment-digits";
       window.SPELLING_SEGMENTER_URL = window.SPELLING_SEGMENTER_URL || "/segment-spelling";
       window.ALTERNATION_SCORER_URL = window.ALTERNATION_SCORER_URL || "/segment-alternation";
@@ -192,9 +193,10 @@
         </div>
 
         <div class="prompt-box">
-          <p class="eyebrow">Sentence</p>
-          <p class="prompt" id="comp-prompt">Something you can fly in</p>
-          <p class="muted">Select the picture that fits. Capture responses via voice or selection.</p>
+          <p class="eyebrow">Prompt Set</p>
+          <p class="prompt" id="comp-prompt">Read all prompts below in order.</p>
+          <ol id="comp-prompt-list" class="comp-prompt-list"></ol>
+          <p class="muted">Capture the full transcript first, then segment it into per-trial responses.</p>
         </div>
 
         <div class="image-grid" id="comp-image-grid" aria-label="Select the matching picture"></div>
@@ -202,7 +204,7 @@
         <div class="controls">
           <div class="control-row">
             <button class="primary" id="comp-start-btn">Start Listening</button>
-            <button class="ghost" id="comp-stop-btn">Stop &amp; Capture</button>
+            <button class="ghost" id="comp-stop-btn">Done &amp; Segment</button>
           </div>
           <div class="control-row">
             <button class="primary" id="comp-submit-btn">Submit Answer</button>

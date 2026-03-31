@@ -318,6 +318,7 @@ const dom = {
   compStatus: document.getElementById("comp-status"),
   compProgressCount: document.getElementById("comp-progress-count"),
   compProgressFill: document.getElementById("comp-progress-fill"),
+  compPromptList: document.getElementById("comp-prompt-list"),
   compImageGrid: document.getElementById("comp-image-grid"),
   compStartBtn: document.getElementById("comp-start-btn"),
   compStopBtn: document.getElementById("comp-stop-btn"),
@@ -538,6 +539,7 @@ const itemStates = items.map(() => ({
 
 const compStates = comprehensionPrompts.map(() => ({
   selectedId: null,
+  typedAnswer: "",
   status: "pending",
   correct: false,
   timestamp: null,
@@ -545,6 +547,12 @@ const compStates = comprehensionPrompts.map(() => ({
   entries: [],
   notes: ""
 }));
+const comprehensionCaptureState = {
+  status: "pending",
+  chunks: [],
+  transcript: "",
+  error: ""
+};
 
 const spellingStates = spellingWords.map(() => ({
   entries: [],
@@ -672,6 +680,7 @@ const delayedStoryScoreInputs = DELAYED_STORY_CRITERIA.reduce((acc, criterion) =
 }, {});
 const STORY_SCORER_URL = window.STORY_SCORER_URL || "";
 const SENTENCE_SEGMENTER_URL = window.SENTENCE_SEGMENTER_URL || "";
+const COMPREHENSION_SEGMENTER_URL = window.COMPREHENSION_SEGMENTER_URL || "";
 const DIGIT_SEGMENTER_URL = window.DIGIT_SEGMENTER_URL || "";
 const SPELLING_SEGMENTER_URL = window.SPELLING_SEGMENTER_URL || "";
 const ALTERNATION_SCORER_URL = window.ALTERNATION_SCORER_URL || "";
@@ -1676,6 +1685,7 @@ function resetAllTests() {
 
   compStates.forEach(state => {
     state.selectedId = null;
+    state.typedAnswer = "";
     state.status = "pending";
     state.correct = false;
     state.timestamp = null;
@@ -1683,6 +1693,10 @@ function resetAllTests() {
     state.entries = [];
     state.notes = "";
   });
+  comprehensionCaptureState.status = "pending";
+  comprehensionCaptureState.chunks = [];
+  comprehensionCaptureState.transcript = "";
+  comprehensionCaptureState.error = "";
   compIndex = 0;
   moveComprehension(0, { force: true });
 
@@ -2594,8 +2608,26 @@ function setupComprehension() {
     return;
   }
   renderComprehensionGrid();
+  renderComprehensionPromptList();
   loadComprehension(0);
   updateComprehensionUI();
+}
+
+function renderComprehensionPromptList() {
+  if (!dom.compPromptList) {
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  comprehensionPrompts.forEach((question, idx) => {
+    const li = document.createElement("li");
+    li.textContent = question.prompt;
+    if (idx === compIndex) {
+      li.classList.add("active");
+    }
+    frag.appendChild(li);
+  });
+  dom.compPromptList.innerHTML = "";
+  dom.compPromptList.appendChild(frag);
 }
 
 function setupSpelling() {
@@ -2674,9 +2706,9 @@ function renderComprehensionGrid() {
 function loadComprehension(index) {
   const boundedIndex = ((index % comprehensionPrompts.length) + comprehensionPrompts.length) % comprehensionPrompts.length;
   compIndex = boundedIndex;
-  const question = comprehensionPrompts[compIndex];
-  dom.compPrompt.textContent = question.prompt;
+  dom.compPrompt.textContent = "Read all prompts below in order.";
   dom.compProgressCount.textContent = `${compIndex + 1} / ${comprehensionPrompts.length}`;
+  renderComprehensionPromptList();
   updateComprehensionUI();
 }
 
@@ -3465,11 +3497,7 @@ function startComprehensionListening() {
   if (!speechSupported || !recognition) {
     return;
   }
-  if (comprehensionSessionEnded) {
-    return;
-  }
-  const state = compStates[compIndex];
-  if (state.status === "listening") {
+  if (comprehensionCaptureState.status === "listening" || comprehensionCaptureState.status === "segmenting") {
     return;
   }
   if (captureContext && captureContext.type !== "comprehension") {
@@ -3478,9 +3506,24 @@ function startComprehensionListening() {
     }
     captureContext = null;
   }
+  compStates.forEach(state => {
+    state.selectedId = null;
+    state.typedAnswer = "";
+    state.status = "pending";
+    state.correct = false;
+    state.timestamp = null;
+    state.tokens = [];
+    state.entries = [];
+  });
+  compIndex = 0;
+  loadComprehension(0);
+  comprehensionSessionEnded = false;
+  comprehensionCaptureState.status = "listening";
+  comprehensionCaptureState.chunks = [];
+  comprehensionCaptureState.transcript = "";
+  comprehensionCaptureState.error = "";
+  const state = compStates[compIndex];
   state.status = "listening";
-  state.tokens = [];
-  state.entries = [];
   captureContext = { type: "comprehension" };
   isStopping = false;
   try {
@@ -3492,11 +3535,12 @@ function startComprehensionListening() {
 }
 
 function stopComprehensionListening() {
-  const state = compStates[compIndex];
-  if (state.status !== "listening") {
+  if (comprehensionCaptureState.status !== "listening") {
     return;
   }
+  const state = compStates[compIndex];
   state.status = "finishing";
+  comprehensionCaptureState.status = "finishing";
   isStopping = true;
   if (recognition) {
     recognition.stop();
@@ -3619,21 +3663,20 @@ function resetSpelling() {
   updateSpellingUI();
 }
 
-function finalizeComprehensionCapture() {
+async function finalizeComprehensionCapture() {
   const state = compStates[compIndex];
   if (!state) {
     return;
   }
-  const question = comprehensionPrompts[compIndex];
-  evaluateComprehension(state, question);
-  state.status = "completed";
-  state.timestamp = Date.now();
   captureContext = null;
   isStopping = false;
-  if (!state.typedAnswer && state.entries.length) {
-    state.typedAnswer = state.entries[state.entries.length - 1].text;
+  if (!comprehensionCaptureState.transcript.trim()) {
+    comprehensionCaptureState.status = "completed";
+    state.status = "pending";
+    updateComprehensionUI();
+    return;
   }
-  updateComprehensionUI();
+  await segmentComprehensionWithLLM();
 }
 
 function selectComprehensionImage(imageId) {
@@ -3688,11 +3731,16 @@ function resetComprehension() {
   }
   comprehensionSessionEnded = false;
   state.selectedId = null;
+  state.typedAnswer = "";
   state.correct = false;
   state.status = "pending";
   state.timestamp = null;
   state.tokens = [];
   state.entries = [];
+  comprehensionCaptureState.status = "pending";
+  comprehensionCaptureState.chunks = [];
+  comprehensionCaptureState.transcript = "";
+  comprehensionCaptureState.error = "";
   updateComprehensionUI();
 }
 
@@ -4630,23 +4678,14 @@ function handleRecognitionResult(event) {
         continue;
       }
       const transcript = result[0].transcript || "";
-      const tokens = tokenizeFluency(transcript);
-      state.entries.push({
-        text: transcript.trim(),
-        source: "Voice",
-        timestamp: Date.now(),
-        tokens
-      });
-      state.tokens.push(...tokens);
+      const text = transcript.trim();
+      if (!text) {
+        continue;
+      }
+      comprehensionCaptureState.chunks.push(text);
+      comprehensionCaptureState.transcript = comprehensionCaptureState.chunks.join(" ");
     }
-    evaluateComprehension(state, comprehensionPrompts[compIndex]);
-    state.status = "completed";
     updateComprehensionUI();
-    if (compIndex === comprehensionPrompts.length - 1) {
-      endComprehensionSession();
-    } else {
-      setTimeout(() => moveComprehension(compIndex + 1, { force: true, keepListening: true }), 150);
-    }
     return;
   }
 
@@ -4999,6 +5038,10 @@ function handleRecognitionError(event) {
     const state = compStates[compIndex];
     if (state.status === "listening" || state.status === "finishing") {
       state.status = "pending";
+      comprehensionCaptureState.status = "idle";
+      comprehensionCaptureState.chunks = [];
+      comprehensionCaptureState.transcript = "";
+      comprehensionCaptureState.error = "";
       captureContext = null;
       updateComprehensionUI();
     }
@@ -5181,7 +5224,7 @@ function handleRecognitionEnd() {
       return;
     }
     if (state.status === "finishing") {
-      finalizeComprehensionCapture();
+      void finalizeComprehensionCapture();
     }
   } else if (captureContext.type === "fluency") {
     if (fluencyState.status === "listening" && !isStopping) {
@@ -5814,7 +5857,6 @@ function updateComprehensionUI() {
     return;
   }
   const state = compStates[compIndex];
-  const question = comprehensionPrompts[compIndex];
   const buttons = dom.compImageGrid.querySelectorAll(".image-option");
   buttons.forEach(btn => {
     btn.classList.toggle("selected", btn.dataset.imageId === state.selectedId);
@@ -5825,8 +5867,12 @@ function updateComprehensionUI() {
   dom.compProgressFill.style.width = `${percent}%`;
 
   let statusLabel = "Idle";
-  if (state.status === "listening") {
+  if (comprehensionCaptureState.status === "listening") {
     statusLabel = "Listening";
+  } else if (comprehensionCaptureState.status === "finishing") {
+    statusLabel = "Finishing";
+  } else if (comprehensionCaptureState.status === "segmenting") {
+    statusLabel = "Segmenting";
   } else if (state.status === "completed") {
     statusLabel = state.correct ? "Correct" : "Recorded";
   } else if (state.selectedId || state.typedAnswer) {
@@ -5834,20 +5880,26 @@ function updateComprehensionUI() {
   }
   dom.compStatus.textContent = statusLabel;
   dom.compStatus.className =
-    state.status === "completed"
+    comprehensionCaptureState.status === "segmenting"
+      ? "status-badge listening"
+      : state.status === "completed"
       ? state.correct
         ? "status-badge completed"
         : "status-badge"
       : "status-badge";
 
-  dom.compSubmitBtn.disabled = (state.status === "completed" && state.correct) || comprehensionSessionEnded;
-  dom.compNextBtn.disabled = comprehensionSessionEnded;
-  dom.compResetBtn.disabled = comprehensionSessionEnded;
+  const busy =
+    comprehensionCaptureState.status === "listening" ||
+    comprehensionCaptureState.status === "finishing" ||
+    comprehensionCaptureState.status === "segmenting";
+  dom.compSubmitBtn.disabled = busy || (state.status === "completed" && state.correct) || comprehensionSessionEnded;
+  dom.compNextBtn.disabled = busy || comprehensionSessionEnded;
+  dom.compResetBtn.disabled = busy || comprehensionSessionEnded;
   if (dom.compStartBtn) {
-    dom.compStartBtn.disabled = !speechSupported || state.status === "listening" || comprehensionSessionEnded;
+    dom.compStartBtn.disabled = !speechSupported || busy || comprehensionSessionEnded;
   }
   if (dom.compStopBtn) {
-    dom.compStopBtn.disabled = state.status !== "listening";
+    dom.compStopBtn.disabled = comprehensionCaptureState.status !== "listening";
   }
 
   renderComprehensionLog();
@@ -6520,13 +6572,14 @@ function renderComprehensionLog() {
       .slice()
       .sort((a, b) => b.timestamp - a.timestamp)[0];
     const selectionLabel = state.selectedId ? itemLookup[state.selectedId].label : "";
-    const spoken = latestEntry ? latestEntry.text : "";
-    const combined = [selectionLabel, spoken].filter(Boolean).join(" / ");
+    const spoken = state.typedAnswer || (latestEntry ? latestEntry.text : "");
+    const combined = [spoken || selectionLabel].filter(Boolean).join(" / ");
     responseTd.textContent = combined || "";
     responseTd.classList.add("editable-cell");
     attachInlineEdit(responseTd, combined, newText => {
       const trimmed = newText.trim();
       state.selectedId = null; // manual override
+      state.typedAnswer = trimmed;
       if (trimmed) {
         const newEntry = {
           text: trimmed,
@@ -6541,6 +6594,8 @@ function renderComprehensionLog() {
         state.tokens = [];
       }
       evaluateComprehension(state, q);
+      state.status = trimmed ? "completed" : "pending";
+      state.timestamp = trimmed ? Date.now() : null;
       updateComprehensionUI();
     });
 
@@ -6583,23 +6638,99 @@ function renderComprehensionLog() {
   }
 }
 
+async function segmentComprehensionWithLLM() {
+  if (!COMPREHENSION_SEGMENTER_URL) {
+    alert("Set window.COMPREHENSION_SEGMENTER_URL before segmenting comprehension.");
+    return;
+  }
+  comprehensionCaptureState.status = "segmenting";
+  comprehensionCaptureState.error = "";
+  updateComprehensionUI();
+  try {
+    const requestBody = {
+      transcript: comprehensionCaptureState.transcript,
+      prompts: comprehensionPrompts.map(prompt => prompt.prompt),
+      labels: [...new Set(comprehensionPrompts.map(prompt => itemLookup[prompt.answerId]?.label).filter(Boolean))]
+    };
+    let response = await fetch(COMPREHENSION_SEGMENTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
+    if (response.status === 405 && SENTENCE_SEGMENTER_URL && SENTENCE_SEGMENTER_URL !== COMPREHENSION_SEGMENTER_URL) {
+      // Backward-compatible fallback for environments that have not yet added /segment-comprehension.
+      response = await fetch(SENTENCE_SEGMENTER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: requestBody.transcript,
+          prompts: requestBody.prompts
+        })
+      });
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Comprehension segmenter HTTP error", response.status, text);
+      throw new Error(`Comprehension segmenter returned ${response.status}`);
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    compStates.forEach(state => {
+      state.selectedId = null;
+      state.typedAnswer = "";
+      state.status = "pending";
+      state.correct = false;
+      state.timestamp = null;
+      state.tokens = [];
+      state.entries = [];
+    });
+    items.forEach((item, idx) => {
+      const state = compStates[idx];
+      const question = comprehensionPrompts[idx];
+      if (!state || !question) {
+        return;
+      }
+      const responseText = String(item?.response || "").trim();
+      state.typedAnswer = responseText;
+      if (responseText) {
+        const tokens = tokenize(responseText);
+        state.entries = [
+          {
+            text: responseText,
+            source: "Voice",
+            timestamp: Date.now(),
+            tokens
+          }
+        ];
+        state.tokens = [...tokens];
+        evaluateComprehension(state, question);
+        state.status = "completed";
+        state.timestamp = Date.now();
+      }
+    });
+    comprehensionCaptureState.status = "completed";
+    const firstPending = compStates.findIndex(state => state.status !== "completed");
+    loadComprehension(firstPending >= 0 ? firstPending : comprehensionPrompts.length - 1);
+  } catch (err) {
+    comprehensionCaptureState.status = "idle";
+    comprehensionCaptureState.error = err?.message || "Comprehension segmentation failed";
+    console.error("Comprehension segmentation failed", err);
+    alert("Comprehension segmentation failed. Check console/backend.");
+  } finally {
+    updateComprehensionUI();
+  }
+}
+
 function renderComprehensionLive() {
   if (!dom.compLiveWords) {
     return;
   }
-  const state = compStates[compIndex];
-  if (!state.tokens.length) {
-    dom.compLiveWords.innerHTML = '<span class="muted">No words captured yet.</span>';
+  const transcript = comprehensionCaptureState.transcript.trim();
+  if (!transcript) {
+    dom.compLiveWords.innerHTML = '<span class="muted">No responses yet.</span>';
     return;
   }
-  const frag = document.createDocumentFragment();
-  state.tokens.slice(-12).forEach(token => {
-    const chip = document.createElement("span");
-    chip.textContent = token;
-    frag.appendChild(chip);
-  });
-  dom.compLiveWords.innerHTML = "";
-  dom.compLiveWords.appendChild(frag);
+  dom.compLiveWords.textContent = transcript;
 }
 
 function renderSpellingLive() {

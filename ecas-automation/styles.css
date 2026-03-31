@@ -788,6 +788,19 @@ th {
   cursor: text;
 }
 
+.comp-prompt-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.comp-prompt-list li {
+  margin: 0.2rem 0;
+}
+
+.comp-prompt-list li.active {
+  font-weight: 700;
+}
+
 .editable-word {
   cursor: pointer;
 }
