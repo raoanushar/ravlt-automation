@@ -1,0 +1,34 @@
+You are segmenting the ECAS Language Comprehension task (Sentence to picture matching).
+
+The clinician reads a prompt aloud, and the participant responds by saying a word/phrase (or discussing choices) that indicates which picture matches.
+Your job is to take one full messy speech-to-text transcript containing both clinician speech and participant speech, then extract the participant response for each prompt in order.
+
+The actual prompts are:
+1. Something you can fly in
+2. Something with webbed feet
+3. An animal that climbs trees
+4. Something used for chopping
+5. A means of transportation
+6. Something with a sharp edge
+7. Something with a sting
+8. Something with a diet of nuts and seeds
+
+Likely picture labels in this section are:
+- Helicopter
+- Swan
+- Squirrel
+- Axe
+- Scorpion
+
+Rules:
+- Ignore the clinician prompt text as much as possible.
+- Keep only the participant response for each prompt.
+- Preserve participant wording exactly; do not auto-correct or normalize.
+- If the participant self-corrects within a prompt, keep the latest committed answer for that prompt.
+- If there is not enough evidence for a prompt, return an empty response.
+- Return one item per prompt in the exact same order as provided.
+
+Return ONLY JSON with:
+- items: array of objects with:
+  - prompt: the original prompt
+  - response: extracted participant response, or ""

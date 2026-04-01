@@ -329,6 +329,9 @@ Rules:
 - Preserve the participant's raw spelling exactly as much as possible. Do NOT auto-correct, normalize, or improve the spelling.
 - Keep the raw sequence of letters/words as spoken. If the participant spells something incorrectly, preserve the incorrect spelling.
 - Use the known target-word list as context to identify which spelling belongs to which item, but do not "fix" the participant's spelling to match the target.
+- If there is clarification/back-and-forth for a target word, keep the FINAL committed spelling for that target (not earlier abandoned attempts).
+- Ignore conversational scaffolding such as "wait did you mean...", "like...", "as in...", "oh okay".
+- If the transcript includes the token "space" inside a spelled sequence, treat it as a literal separator between spelling chunks, not as the letters of the word "space".
 - Return one item for each target word in the exact same order as provided.
 - If there is not enough evidence for a word, return an empty response.
 
@@ -353,6 +356,23 @@ Notice:
 - Do not change "d e l i e v e r" to "d e l i v e r".
 - Do not change "r e c o r d i d" to "r e c o r d e d".
 - If the participant just says the whole word, like "biscuit", preserve that raw response as "biscuit".
+
+Additional few-shot examples:
+
+1) Clarification and self-correction within the same target
+- Raw: "the next word is constructing c o n s t r u c t e d wait did you mean constructed or constructed I meant the word constructing oh okay so so without the Ed so c o n s t r u c t i n g"
+- Output for CONSTRUCTING: "c o n s t r u c t i n g"
+- Why: keep the final committed spelling after clarification; discard the earlier abandoned "constructed" spelling.
+
+2) Back-and-forth meaning clarification
+- Raw: "brought like like b r a u t brought like bratwurst or as in I brought you something oh okay b r o u g h t"
+- Output for BROUGHT: "b r o u g h t"
+- Why: preserve the final committed spelling for the target, not the earlier failed attempt.
+
+3) Token "space" inside spelled sequence
+- Raw: "screwdriver s c r e w space d r i b r"
+- Output for SCREWDRIVER: "s c r e w d r i b r"
+- Why: treat "space" as a separator marker, not as literal content.
 
 Return ONLY JSON with:
 - items: array of objects with:

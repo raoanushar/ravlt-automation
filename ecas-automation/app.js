@@ -547,6 +547,7 @@ const compStates = comprehensionPrompts.map(() => ({
   timestamp: null,
   tokens: [],
   entries: [],
+  aliasNote: "",
   notes: ""
 }));
 const comprehensionCaptureState = {
@@ -1700,6 +1701,7 @@ function resetAllTests() {
     state.timestamp = null;
     state.tokens = [];
     state.entries = [];
+    state.aliasNote = "";
     state.notes = "";
   });
   comprehensionCaptureState.status = "pending";
@@ -3622,6 +3624,7 @@ function startComprehensionListening() {
     state.timestamp = null;
     state.tokens = [];
     state.entries = [];
+    state.aliasNote = "";
   });
   compIndex = 0;
   loadComprehension(0);
@@ -3845,6 +3848,7 @@ function resetComprehension() {
   state.timestamp = null;
   state.tokens = [];
   state.entries = [];
+  state.aliasNote = "";
   comprehensionCaptureState.status = "pending";
   comprehensionCaptureState.chunks = [];
   comprehensionCaptureState.transcript = "";
@@ -6726,7 +6730,7 @@ function renderComprehensionLog() {
     const notesTd = document.createElement("td");
     const notesInput = document.createElement("input");
     notesInput.type = "text";
-    notesInput.value = state.notes || "";
+    notesInput.value = state.notes || state.aliasNote || "";
     notesInput.placeholder = "Notes";
     notesInput.dataset.index = idx;
     notesInput.addEventListener("input", event => {
@@ -6791,6 +6795,7 @@ async function segmentComprehensionWithLLM() {
       state.timestamp = null;
       state.tokens = [];
       state.entries = [];
+      state.aliasNote = "";
     });
     items.forEach((item, idx) => {
       const state = compStates[idx];
@@ -9229,9 +9234,17 @@ function evaluateComprehension(state, question) {
   const expected = itemLookup[question.answerId];
   const targetSet = buildTargetSet(expected ? expected.answers : []);
   const selectionMatch = state.selectedId === question.answerId;
-  const voiceMatch = (state.tokens || []).some(token => targetSet.has(token));
+  const tokens = state.tokens || [];
+  const voiceMatch = tokens.some(token => targetSet.has(token));
   const aliasSet = getNamingAliasTokens(question.answerId);
-  const aliasMatch = (state.tokens || []).some(token => aliasSet.has(token));
+  const matchedAliasToken = tokens.find(token => aliasSet.has(token)) || "";
+  const aliasMatch = Boolean(matchedAliasToken);
+  const expectedLabel = (expected?.label || "").toLowerCase();
+  const aliasWord = String(matchedAliasToken || "").toLowerCase();
+  state.aliasNote =
+    aliasMatch && !selectionMatch && !voiceMatch
+      ? `Accepted via prior naming of ${expectedLabel} as '${aliasWord}'`
+      : "";
   state.correct = Boolean(selectionMatch || voiceMatch || aliasMatch);
   return state.correct;
 }
