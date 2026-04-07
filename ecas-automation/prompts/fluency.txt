@@ -5,9 +5,19 @@ Given the raw list of spoken words, produce a processed list that follows these 
 - Do not include repetitions, nonsense words (not in an English dictionary), or proper names.
 - If a second meaning is provided, score it as an independent item (e.g., school the institution vs school of fish).
 - Different spelling/meaning counts as separate (e.g., paced vs paste; savor vs savory).
+- Homophones with different meanings should be kept as separate valid responses (e.g., sea vs see), not marked as repeats.
 - Different grammatical forms with meaning change count separately (e.g., final vs finally).
 - Plurals are accepted only if the singular wasn’t already provided; if both occur, score only the first.
 - Perseverations with no meaning change (sit/sat/sitting; take/took) count once.
+
+Repeat rule clarification:
+- Use "repeat" only for true duplicate lexical responses with the same intended meaning.
+- Do NOT mark a response as "repeat" solely because it sounds the same as another response.
+
+Example:
+- Raw words: ["sea", "see"]
+- processed_words should include both: ["sea", "see"]
+- rationale should NOT mark "see" as repeat.
 
 Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.

@@ -75,6 +75,14 @@ class FluencyScore(BaseModel):
     rationale: dict[str, str]
 
 
+class FluencySegmentWord(BaseModel):
+    word: str
+
+
+class FluencySegmentation(BaseModel):
+    words: list[FluencySegmentWord]
+
+
 class SentenceItemScore(BaseModel):
     prompt: str | None = None
     response: str
@@ -434,15 +442,52 @@ Given the raw list of spoken words, produce a processed list that follows these 
 - Do not include repetitions, nonsense words (not in an English dictionary), or proper names.
 - If a second meaning is provided, score it as an independent item (e.g., school the institution vs school of fish).
 - Different spelling/meaning counts as separate (e.g., paced vs paste; savor vs savory).
+- Homophones with different meanings should be kept as separate valid responses (e.g., sea vs see), not marked as repeats.
 - Different grammatical forms with meaning change count separately (e.g., final vs finally).
 - Plurals are accepted only if the singular wasn’t already provided; if both occur, score only the first.
 - Perseverations with no meaning change (sit/sat/sitting; take/took) count once.
+
+Repeat rule clarification:
+- Use "repeat" only for true duplicate lexical responses with the same intended meaning.
+- Do NOT mark a response as "repeat" solely because it sounds the same as another response.
+
+Example:
+- Raw words: ["sea", "see"]
+- processed_words should include both: ["sea", "see"]
+- rationale should NOT mark "see" as repeat.
 
 Return ONLY JSON with:
 - "processed_words": an array of strings that meet these rules.
 - "rationale": a dictionary mapping EACH removed word to a reason. Use only these reasons:
   "proper name", "number", "place", "nonsense word", "repeat", "inflection", "does not start with S".
   If no words are removed, return an empty object.
+"""
+
+FLUENCY_SEGMENT_PROMPT = """
+You are segmenting the ECAS verbal fluency task for the letter "S".
+
+You will receive one long raw speech-to-text transcript that may include:
+- clinician prompts
+- participant words
+- participant clarifications/corrections
+- ASR mistakes
+
+Your job is to extract a flat ordered list of participant response words for the raw response UI.
+
+Rules:
+- Return only participant response words, in the same chronological order spoken.
+- Ignore clinician scaffolding and filler phrases.
+- Preserve participant intent when clarification indicates a homophone.
+  Example: "c as in the ocean ... c as in visually" should yield words "sea", "see".
+- If a participant restarts/corrects a word immediately, keep the latest committed word.
+- Keep duplicates if they were actually repeated by the participant.
+- Do not score or filter by correctness here. This is segmentation only.
+- Prefer simple lowercase word output when possible.
+- If no valid words are identifiable, return an empty list.
+
+Return ONLY JSON with:
+- words: array of objects, each with:
+  - word: extracted participant word
 """
 
 ALTERNATION_PROMPT = """
@@ -542,6 +587,7 @@ def config_js():
     supabase_anon = os.getenv("SUPABASE_ANON_KEY", "")
     story_url = os.getenv("STORY_SCORER_URL", "")
     fluency_url = os.getenv("FLUENCY_SCORER_URL", "")
+    fluency_segment_url = os.getenv("FLUENCY_SEGMENTER_URL", "")
     fluency_t_url = os.getenv("FLUENCY_T_SCORER_URL", "")
     sentence_url = os.getenv("SENTENCE_SCORER_URL", "")
     sentence_segment_url = os.getenv("SENTENCE_SEGMENTER_URL", "")
@@ -558,6 +604,8 @@ def config_js():
         + json.dumps(story_url or "/score-story")
         + ";\nwindow.FLUENCY_SCORER_URL = "
         + json.dumps(fluency_url or "/score-fluency")
+        + ";\nwindow.FLUENCY_SEGMENTER_URL = "
+        + json.dumps(fluency_segment_url or "/segment-fluency-s")
         + ";\nwindow.FLUENCY_T_SCORER_URL = "
         + json.dumps(fluency_t_url or "/score-fluency-t")
         + ";\nwindow.SENTENCE_SCORER_URL = "
@@ -690,6 +738,45 @@ def score_fluency_options():
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     return response
+
+
+@app.route("/segment-fluency-s", methods=["POST", "OPTIONS"])
+def segment_fluency_s():
+    if request.method == "OPTIONS":
+        logging.info("Fluency-S segmentation OPTIONS preflight received.")
+        response = make_response("", 200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    if not client.api_key:
+        logging.error("OPENAI_API_KEY not set")
+        return jsonify({"error": "OPENAI_API_KEY not set"}), 400
+
+    data = request.get_json(force=True) or {}
+    transcript = data.get("transcript", "") or ""
+    override = data.get("prompt") if isinstance(data, dict) else ""
+    prompt_text = (override or "").strip() or load_prompt_file("fluency_segment.txt", FLUENCY_SEGMENT_PROMPT)
+    logging.info("Fluency-S segmentation request. Transcript length: %s", len(transcript))
+    try:
+        completion = client.chat.completions.parse(
+            model="gpt-5.1",
+            messages=[
+                {"role": "system", "content": "You segment ECAS fluency transcripts into response words."},
+                {"role": "user", "content": f"{prompt_text}\n\nRaw transcript:\n{transcript}"},
+            ],
+            response_format=FluencySegmentation,
+        )
+        parsed: FluencySegmentation = completion.choices[0].message.parsed
+        payload = parsed.model_dump()
+        payload["usage"] = extract_usage(completion)
+        logging.info("Fluency-S segmentation OpenAI call succeeded.")
+    except Exception as err:  # pylint: disable=broad-except
+        logging.exception("Fluency-S segmentation OpenAI call failed")
+        return jsonify({"error": "llm_failed", "detail": str(err)}), 500
+
+    return jsonify(payload)
 
 
 @app.route("/score-fluency-t", methods=["POST", "OPTIONS"])

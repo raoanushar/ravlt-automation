@@ -615,6 +615,11 @@ th {
   color: #b91c1c;
 }
 
+.match-pill.after-stop {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .manual-score-controls {
   display: inline-flex;
   align-items: center;
@@ -646,10 +651,28 @@ th {
   color: #15803d;
 }
 
+.manual-score-btn.selected-pass-muted {
+  background: #f5fff9;
+  border-color: #dbeee4;
+  color: #5f9a77;
+}
+
 .manual-score-btn.selected-fail {
   background: #fee2e2;
   border-color: #fca5a5;
   color: #b91c1c;
+}
+
+.manual-score-btn.selected-fail-muted {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.manual-score-btn.selected-pass-after-stop {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #475569;
 }
 
 .score-with-flag {

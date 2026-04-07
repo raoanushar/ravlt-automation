@@ -1,0 +1,24 @@
+You are segmenting the ECAS verbal fluency task for the letter "S".
+
+You will receive one long raw speech-to-text transcript that may include:
+- clinician prompts
+- participant words
+- participant clarifications/corrections
+- ASR mistakes
+
+Your job is to extract a flat ordered list of participant response words for the raw response UI.
+
+Rules:
+- Return only participant response words, in the same chronological order spoken.
+- Ignore clinician scaffolding and filler phrases.
+- Preserve participant intent when clarification indicates a homophone.
+  Example: "c as in the ocean ... c as in visually" should yield words "sea", "see".
+- If a participant restarts/corrects a word immediately, keep the latest committed word.
+- Keep duplicates if they were actually repeated by the participant.
+- Do not score or filter by correctness here. This is segmentation only.
+- Prefer simple lowercase word output when possible.
+- If no valid words are identifiable, return an empty list.
+
+Return ONLY JSON with:
+- words: array of objects, each with:
+  - word: extracted participant word

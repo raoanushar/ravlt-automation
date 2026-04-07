@@ -9,6 +9,7 @@
     <script>
       window.STORY_SCORER_URL = window.STORY_SCORER_URL || "/score-story";
       window.FLUENCY_SCORER_URL = window.FLUENCY_SCORER_URL || "/score-fluency";
+      window.FLUENCY_SEGMENTER_URL = window.FLUENCY_SEGMENTER_URL || "/segment-fluency-s";
       window.FLUENCY_T_SCORER_URL = window.FLUENCY_T_SCORER_URL || "/score-fluency-t";
       window.SENTENCE_SCORER_URL = window.SENTENCE_SCORER_URL || "/score-sentences";
       window.SENTENCE_SEGMENTER_URL = window.SENTENCE_SEGMENTER_URL || "/segment-sentences";
@@ -533,7 +534,7 @@
 
         <div class="controls">
           <button class="primary" id="fluency-start-btn">Start Listening</button>
-          <button class="ghost" id="fluency-stop-btn">Stop early</button>
+          <button class="ghost" id="fluency-stop-btn">Done & Segment</button>
           <button class="ghost danger" id="fluency-reset-btn">Reset</button>
         </div>
 
@@ -548,7 +549,7 @@
             <input type="text" id="fluency-manual-input" placeholder="Add word" />
             <button class="ghost" id="fluency-manual-add">Add</button>
           </div>
-          <p class="muted">Double-click a word in the transcription or list to edit it. Clear to remove.</p>
+          <p class="muted">Double-click a word in the response list to edit it. Clear to remove.</p>
         </div>
 
         <div class="log">
