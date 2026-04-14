@@ -55,6 +55,9 @@
         <button class="tab-btn" type="button" data-tab-target="tab-prompts" role="tab" aria-selected="false">
           Agent Prompts
         </button>
+        <button class="tab-btn" type="button" data-tab-target="tab-audit" role="tab" aria-selected="false">
+          Audit Assistant
+        </button>
       </div>
 
       <div class="tab-panel active" id="tab-assessment" role="tabpanel">
@@ -1730,6 +1733,181 @@
                 </div>
               </div>
               <textarea id="prompt-sentence" rows="12"></textarea>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" id="tab-audit" role="tabpanel">
+        <section class="stage-card" id="audit-assistant-card">
+          <div class="audit-screen active" id="audit-screen-welcome">
+            <div class="audit-welcome">
+              <p class="eyebrow">Audit Assistant</p>
+              <h2>Welcome to the ECAS AI Audit Assistant!</h2>
+              <p class="overview">
+                Please upload a scanned version of your paper ECAS administration. We will extract the participant responses and your
+                scores, ask you to validate them, and then run a score audit for quality control to flag potential scoring errors.
+              </p>
+              <button class="primary" id="audit-start-btn" type="button">Click to Get Started</button>
+            </div>
+          </div>
+
+          <div class="audit-screen" id="audit-screen-upload">
+            <div class="stage-header">
+              <div>
+                <p class="eyebrow">Step 1</p>
+                <h2>Upload Scanned Paper ECAS Form</h2>
+                <ul class="muted audit-steps">
+                  <li>Upload your scanned ECAS paper form so we can extract the responses and scores.</li>
+                  <li>Accepted formats: PDF or image scan. Make sure text and handwritten entries are clearly visible.</li>
+                </ul>
+              </div>
+              <span class="status-badge">Upload</span>
+            </div>
+            <label class="audit-dropzone" for="audit-file-input" id="audit-dropzone">
+              <strong>Drag & drop scan/PDF here</strong>
+              <span class="muted">or click to browse</span>
+            </label>
+            <input id="audit-file-input" type="file" accept=".pdf,image/*" />
+            <div class="audit-upload-row">
+              <button class="ghost" id="audit-load-demo-btn" type="button">Use Demo ECAS Form</button>
+              <code id="audit-file-path">No file selected</code>
+            </div>
+            <div class="controls">
+              <button class="primary" id="audit-extract-btn" type="button">Extract Responses &amp; Scores</button>
+            </div>
+          </div>
+
+          <div class="audit-screen" id="audit-screen-processing">
+            <div class="audit-center">
+              <p class="eyebrow">Step 2</p>
+              <h2>Processing</h2>
+              <p class="overview" id="audit-extraction-status">
+                Extracting responses from scanned form...
+              </p>
+            </div>
+          </div>
+
+          <div class="audit-screen" id="audit-screen-review">
+            <div class="stage-header">
+              <div>
+                <p class="eyebrow">Step 3</p>
+                <h2>Verify Extracted Responses + Scores</h2>
+                <p class="overview">Review side-by-side, edit anything needed, then finalize.</p>
+              </div>
+              <span class="status-badge">Review</span>
+            </div>
+            <div class="audit-split">
+              <div class="audit-card">
+                <p class="eyebrow">Scan Preview</p>
+                <iframe id="audit-preview-frame" title="Audit file preview"></iframe>
+              </div>
+              <div class="audit-card">
+                <h3>Section 1: Language - Naming</h3>
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Prompt</th>
+                      <th>Extracted Response (Editable)</th>
+                      <th>Score</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-naming-body">
+                    <tr><td>Scorpion</td><td><input type="text" data-audit-naming-response="0" /></td><td><input type="text" data-audit-naming-score="0" placeholder="0/1" /></td></tr>
+                    <tr><td>Bow</td><td><input type="text" data-audit-naming-response="1" /></td><td><input type="text" data-audit-naming-score="1" placeholder="0/1" /></td></tr>
+                    <tr><td>Helicopter</td><td><input type="text" data-audit-naming-response="2" /></td><td><input type="text" data-audit-naming-score="2" placeholder="0/1" /></td></tr>
+                    <tr><td>Fox</td><td><input type="text" data-audit-naming-response="3" /></td><td><input type="text" data-audit-naming-score="3" placeholder="0/1" /></td></tr>
+                    <tr><td>Axe</td><td><input type="text" data-audit-naming-response="4" /></td><td><input type="text" data-audit-naming-score="4" placeholder="0/1" /></td></tr>
+                    <tr><td>Squirrel</td><td><input type="text" data-audit-naming-response="5" /></td><td><input type="text" data-audit-naming-score="5" placeholder="0/1" /></td></tr>
+                    <tr><td>Swan</td><td><input type="text" data-audit-naming-response="6" /></td><td><input type="text" data-audit-naming-score="6" placeholder="0/1" /></td></tr>
+                    <tr><td>Accordion</td><td><input type="text" data-audit-naming-response="7" /></td><td><input type="text" data-audit-naming-score="7" placeholder="0/1" /></td></tr>
+                  </tbody>
+                </table>
+                <div class="audit-total-row">
+                  <label for="audit-naming-total-score"><strong>Extracted Naming Total Score</strong></label>
+                  <input id="audit-naming-total-score" type="text" placeholder="e.g., 8" />
+                </div>
+
+                <h3>Section 2: Language - Comprehension</h3>
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Prompt</th>
+                      <th>Extracted Response (Editable)</th>
+                      <th>Score</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-comp-body">
+                    <tr><td>Something you can fly in</td><td><input type="text" data-audit-comp-response="0" /></td><td><input type="text" data-audit-comp-score="0" placeholder="0/1" /></td></tr>
+                    <tr><td>Something with webbed feet</td><td><input type="text" data-audit-comp-response="1" /></td><td><input type="text" data-audit-comp-score="1" placeholder="0/1" /></td></tr>
+                    <tr><td>An animal that climbs trees</td><td><input type="text" data-audit-comp-response="2" /></td><td><input type="text" data-audit-comp-score="2" placeholder="0/1" /></td></tr>
+                    <tr><td>Something used for chopping</td><td><input type="text" data-audit-comp-response="3" /></td><td><input type="text" data-audit-comp-score="3" placeholder="0/1" /></td></tr>
+                    <tr><td>A means of transportation</td><td><input type="text" data-audit-comp-response="4" /></td><td><input type="text" data-audit-comp-score="4" placeholder="0/1" /></td></tr>
+                    <tr><td>Something with a sharp edge</td><td><input type="text" data-audit-comp-response="5" /></td><td><input type="text" data-audit-comp-score="5" placeholder="0/1" /></td></tr>
+                    <tr><td>Something with a sting</td><td><input type="text" data-audit-comp-response="6" /></td><td><input type="text" data-audit-comp-score="6" placeholder="0/1" /></td></tr>
+                    <tr><td>Something with a diet of nuts and seeds</td><td><input type="text" data-audit-comp-response="7" /></td><td><input type="text" data-audit-comp-score="7" placeholder="0/1" /></td></tr>
+                  </tbody>
+                </table>
+
+                <div class="audit-total-row">
+                  <label for="audit-comp-total-score"><strong>Extracted Comprehension Total Score</strong></label>
+                  <input id="audit-comp-total-score" type="text" placeholder="e.g., 8" />
+                </div>
+              </div>
+            </div>
+            <div class="controls">
+              <button class="primary" id="audit-finalize-btn" type="button">Finalize Responses + Scores</button>
+            </div>
+          </div>
+
+          <div class="audit-screen" id="audit-screen-run">
+            <div class="audit-center">
+              <p class="eyebrow">Step 4</p>
+              <h2>Run AI Assistant</h2>
+              <p class="overview">Run score audit quality control and review flagged issues.</p>
+              <button class="primary" id="audit-run-btn" type="button">Run AI Assistant</button>
+            </div>
+            <div id="audit-qc-results" class="hidden">
+              <div class="audit-card">
+                <h3>Section 1: Language - Naming (AI QC) <span id="audit-naming-status" class="audit-subtest-status"></span></h3>
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Target Response</th>
+                      <th>Extracted Participant Response</th>
+                      <th>Extracted Score</th>
+                      <th>AI QC Score</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-qc-naming-body">
+                    <tr>
+                      <td colspan="4" class="muted">Run AI Assistant to generate QC results.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="audit-card">
+                <h3>Section 2: Language - Comprehension (AI QC) <span id="audit-comp-status" class="audit-subtest-status"></span></h3>
+                <table class="audit-table">
+                  <thead>
+                    <tr>
+                      <th>Target Response</th>
+                      <th>Extracted Participant Response</th>
+                      <th>Extracted Score</th>
+                      <th>AI QC Score</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-qc-comp-body">
+                    <tr>
+                      <td colspan="4" class="muted">Run AI Assistant to generate QC results.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="audit-card hidden" id="audit-report-card">
+              <p class="eyebrow">Audit Report</p>
+              <div id="audit-report-output" class="audit-report">Run AI Assistant to generate the audit report.</div>
             </div>
           </div>
         </section>

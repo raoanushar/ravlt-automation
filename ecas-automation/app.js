@@ -448,6 +448,28 @@ const dom = {
   sessionSaveStatus: document.getElementById("session-save-status"),
   sessionTotalTimer: document.getElementById("session-total-timer"),
   sessionSectionTimers: document.getElementById("session-section-timers"),
+  auditStartBtn: document.getElementById("audit-start-btn"),
+  auditFinalizeBtn: document.getElementById("audit-finalize-btn"),
+  auditRunBtn: document.getElementById("audit-run-btn"),
+  auditDropzone: document.getElementById("audit-dropzone"),
+  auditScreens: Array.from(document.querySelectorAll(".audit-screen")),
+  auditFileInput: document.getElementById("audit-file-input"),
+  auditLoadDemoBtn: document.getElementById("audit-load-demo-btn"),
+  auditFilePath: document.getElementById("audit-file-path"),
+  auditPreviewFrame: document.getElementById("audit-preview-frame"),
+  auditExtractionStatus: document.getElementById("audit-extraction-status"),
+  auditExtractBtn: document.getElementById("audit-extract-btn"),
+  auditNamingBody: document.getElementById("audit-naming-body"),
+  auditCompBody: document.getElementById("audit-comp-body"),
+  auditNamingTotalScore: document.getElementById("audit-naming-total-score"),
+  auditCompTotalScore: document.getElementById("audit-comp-total-score"),
+  auditQCResults: document.getElementById("audit-qc-results"),
+  auditQCNamingBody: document.getElementById("audit-qc-naming-body"),
+  auditQCCompBody: document.getElementById("audit-qc-comp-body"),
+  auditNamingStatus: document.getElementById("audit-naming-status"),
+  auditCompStatus: document.getElementById("audit-comp-status"),
+  auditReportCard: document.getElementById("audit-report-card"),
+  auditReportOutput: document.getElementById("audit-report-output"),
   dotsStatus: document.getElementById("dots-status"),
   dotsProgressCount: document.getElementById("dots-progress-count"),
   dotsProgressFill: document.getElementById("dots-progress-fill"),
@@ -826,6 +848,12 @@ const delayedRecognitionStates = delayedRecognitionQuestions.map(() => ({
   answer: null,
   correct: null
 }));
+const auditState = {
+  fileName: "",
+  fileUrl: "",
+  extractionRan: false,
+  scoringRan: false
+};
 
 init().catch(err => {
   console.error("Initialization failed", err);
@@ -854,6 +882,7 @@ async function init() {
   setupDelayedRecognition();
   setupSentenceScoreEditing();
   setupSessionTimers();
+  setupAuditAssistant();
   updateUI();
   startAutoSaveWatcher();
 }
@@ -1250,6 +1279,585 @@ function setupTabs() {
       document.body.dataset.activeTab = targetId || "";
     });
   });
+}
+
+function getAuditComprehensionRows() {
+  if (!dom.auditCompBody) {
+    return [];
+  }
+  return Array.from(dom.auditCompBody.querySelectorAll("tr")).map((row, idx) => ({
+    prompt: row.children[0]?.textContent?.trim() || `Prompt ${idx + 1}`,
+    responseInput: row.querySelector(`[data-audit-comp-response="${idx}"]`),
+    scoreInput: row.querySelector(`[data-audit-comp-score="${idx}"]`)
+  }));
+}
+
+function getAuditNamingRows() {
+  if (!dom.auditNamingBody) {
+    return [];
+  }
+  return Array.from(dom.auditNamingBody.querySelectorAll("tr")).map((row, idx) => ({
+    prompt: row.children[0]?.textContent?.trim() || `Naming ${idx + 1}`,
+    responseInput: row.querySelector(`[data-audit-naming-response="${idx}"]`),
+    scoreInput: row.querySelector(`[data-audit-naming-score="${idx}"]`)
+  }));
+}
+
+function parseAuditScoreValue(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return null;
+  }
+  const slashMatch = text.match(/^(-?\d+)\s*\/\s*(-?\d+)$/);
+  if (slashMatch) {
+    const lhs = Number(slashMatch[1]);
+    return Number.isFinite(lhs) ? lhs : null;
+  }
+  const numeric = Number(text);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function resolveAuditNamingItem(row, idx) {
+  const promptKeyRaw = canonicalize(row.prompt || "");
+  const promptKey = promptKeyRaw === "ACCORDIAN" ? "ACCORDION" : promptKeyRaw;
+  const byLabel = items.find(item => canonicalize(item.label || "") === promptKey);
+  if (byLabel) {
+    return byLabel;
+  }
+  return items[idx] || null;
+}
+
+function scoreAuditNamingWithCopilot(rows) {
+  return rows.map((row, idx) => {
+    const item = resolveAuditNamingItem(row, idx);
+    const responseText = row.responseInput ? row.responseInput.value.trim() : "";
+    const tokens = tokenize(responseText);
+    const targetSet = buildTargetSet(item?.answers || []);
+    const matchedToken = tokens.find(token => targetSet.has(token)) || "";
+    const copilotScore = matchedToken ? 1 : 0;
+    const extractedScore = parseAuditScoreValue(row.scoreInput ? row.scoreInput.value : "");
+    return {
+      idx,
+      itemId: item?.id || "",
+      label: item?.label || row.prompt || `Naming ${idx + 1}`,
+      responseText,
+      extractedScore,
+      copilotScore,
+      matchedToken
+    };
+  });
+}
+
+function scoreAuditComprehensionWithCopilot(rows, namingResults) {
+  const aliasByItemId = new Map();
+  namingResults.forEach(result => {
+    if (!result.itemId) {
+      return;
+    }
+    aliasByItemId.set(result.itemId, new Set(tokenize(result.responseText || "")));
+  });
+
+  return rows.map((row, idx) => {
+    const prompt = comprehensionPrompts[idx];
+    const expected = prompt ? itemLookup[prompt.answerId] : null;
+    const responseText = row.responseInput ? row.responseInput.value.trim() : "";
+    const tokens = tokenize(responseText);
+    const targetSet = buildTargetSet(expected?.answers || []);
+    const voiceMatchToken = tokens.find(token => targetSet.has(token)) || "";
+    const aliasSet = aliasByItemId.get(prompt?.answerId || "") || new Set();
+    const aliasToken = tokens.find(token => aliasSet.has(token)) || "";
+    const aliasMatch = Boolean(aliasToken);
+    const voiceMatch = Boolean(voiceMatchToken);
+    const copilotScore = voiceMatch || aliasMatch ? 1 : 0;
+    const expectedLabel = (expected?.label || "").toLowerCase();
+    const aliasWord = String(aliasToken || "").toLowerCase();
+    const aliasNote =
+      aliasMatch && !voiceMatch ? `Accepted via prior naming of ${expectedLabel} as '${aliasWord}'` : "";
+    const extractedScore = parseAuditScoreValue(row.scoreInput ? row.scoreInput.value : "");
+    return {
+      idx,
+      prompt: row.prompt || prompt?.prompt || `Comprehension ${idx + 1}`,
+      expectedLabel: expected?.label || "",
+      responseText,
+      extractedScore,
+      copilotScore,
+      voiceMatchToken,
+      aliasNote
+    };
+  });
+}
+
+function renderAuditQCTable(tbody, rows, getTargetLabel) {
+  if (!tbody) {
+    return;
+  }
+  tbody.innerHTML = "";
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.className = "muted";
+    td.textContent = "No rows available.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  rows.forEach(row => {
+    const tr = document.createElement("tr");
+    const extracted = row.extractedScore;
+    const mismatch = extracted !== null && extracted !== row.copilotScore;
+    if (mismatch) {
+      tr.classList.add("audit-qc-mismatch");
+    }
+
+    const targetTd = document.createElement("td");
+    targetTd.textContent = getTargetLabel(row);
+
+    const responseTd = document.createElement("td");
+    responseTd.textContent = row.responseText || "";
+
+    const extractedTd = document.createElement("td");
+    extractedTd.className = "audit-qc-score";
+    extractedTd.textContent = extracted === null ? "N/A" : String(extracted);
+    if (mismatch) {
+      extractedTd.classList.add("mismatch");
+    }
+
+    const aiTd = document.createElement("td");
+    aiTd.className = "audit-qc-score";
+    aiTd.textContent = String(row.copilotScore);
+    if (mismatch) {
+      aiTd.classList.add("mismatch");
+    }
+
+    tr.append(targetTd, responseTd, extractedTd, aiTd);
+    tbody.appendChild(tr);
+  });
+
+  const extractedTotal = rows.reduce((sum, row) => sum + (row.extractedScore || 0), 0);
+  const aiTotal = rows.reduce((sum, row) => sum + (row.copilotScore || 0), 0);
+  const totalMismatch = extractedTotal !== aiTotal;
+
+  const totalTr = document.createElement("tr");
+  totalTr.classList.add("audit-qc-total-row");
+  if (totalMismatch) {
+    totalTr.classList.add("audit-qc-mismatch");
+  }
+
+  const totalTargetTd = document.createElement("td");
+  totalTargetTd.textContent = "Total Score";
+  const totalResponseTd = document.createElement("td");
+  totalResponseTd.textContent = "—";
+  const totalExtractedTd = document.createElement("td");
+  totalExtractedTd.className = "audit-qc-score";
+  totalExtractedTd.textContent = String(extractedTotal);
+  if (totalMismatch) {
+    totalExtractedTd.classList.add("mismatch");
+  }
+  const totalAiTd = document.createElement("td");
+  totalAiTd.className = "audit-qc-score";
+  totalAiTd.textContent = String(aiTotal);
+  if (totalMismatch) {
+    totalAiTd.classList.add("mismatch");
+  }
+  totalTr.append(totalTargetTd, totalResponseTd, totalExtractedTd, totalAiTd);
+  tbody.appendChild(totalTr);
+}
+
+function escapeAuditHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderAuditReport({
+  findings,
+  notes
+}) {
+  if (!dom.auditReportOutput) {
+    return;
+  }
+  const hasFindings = findings.length > 0;
+  const statusLabel = hasFindings ? "Needs Review" : "No Discrepancies";
+  const statusClass = hasFindings ? "warn" : "ok";
+  const sectionTitles = {
+    naming: "Section 1: Language - Naming",
+    comprehension: "Section 2: Language - Comprehension"
+  };
+  const sectionFindings = {
+    naming: findings.filter(f => f.section === "naming"),
+    comprehension: findings.filter(f => f.section === "comprehension")
+  };
+  const notesHtml = notes.length
+    ? `<h4>Section 2 Notes</h4><ul class="audit-report-list">${notes.map(note => `<li>${escapeAuditHtml(note)}</li>`).join("")}</ul>`
+    : "";
+
+  const sectionHtml = ["naming", "comprehension"]
+    .map(section => {
+      const rows = sectionFindings[section];
+      const hasSectionIssues = rows.length > 0;
+      const badgeClass = hasSectionIssues ? "warn" : "ok";
+      const badgeText = hasSectionIssues ? "Needs Review" : "No Errors";
+      const listHtml = hasSectionIssues
+        ? rows
+            .map(
+              finding =>
+                `<li><strong>${escapeAuditHtml(finding.title)}</strong><br>${escapeAuditHtml(finding.detail)}<span class="audit-report-todo">To do: ${escapeAuditHtml(finding.todo)}</span></li>`
+            )
+            .join("")
+        : "<li>No discrepancies found for this section.</li>";
+      return `
+        <div class="audit-report-section">
+          <h4>${escapeAuditHtml(sectionTitles[section])} <span class="audit-subtest-status ${badgeClass}">${badgeText}</span></h4>
+          <ul class="audit-report-list">${listHtml}</ul>
+        </div>
+      `;
+    })
+    .join("");
+
+  dom.auditReportOutput.innerHTML = `
+    <div class="audit-report-status ${statusClass}">${statusLabel}</div>
+    <h4>Section-by-Section Review</h4>
+    ${sectionHtml}
+    ${notesHtml}
+  `;
+}
+
+function setAuditSubtestStatus(element, hasIssues) {
+  if (!element) {
+    return;
+  }
+  element.textContent = hasIssues ? "Needs Review" : "No Errors";
+  element.classList.toggle("warn", hasIssues);
+  element.classList.toggle("ok", !hasIssues);
+}
+
+function setAuditScreen(screenId) {
+  if (!dom.auditScreens || !dom.auditScreens.length) {
+    return;
+  }
+  dom.auditScreens.forEach(screen => {
+    const isActive = screen.id === screenId;
+    screen.classList.toggle("active", isActive);
+    screen.hidden = !isActive;
+  });
+}
+
+function setAuditFile(file) {
+  if (!file) {
+    return;
+  }
+  if (auditState.fileUrl) {
+    URL.revokeObjectURL(auditState.fileUrl);
+  }
+  auditState.fileName = file.name || "";
+  auditState.fileUrl = URL.createObjectURL(file);
+  if (dom.auditFilePath) {
+    dom.auditFilePath.textContent = auditState.fileName || "Unnamed file";
+  }
+  if (dom.auditPreviewFrame) {
+    dom.auditPreviewFrame.src = auditState.fileUrl;
+  }
+}
+
+function setAuditDemoFile() {
+  const demoPath = "data/audit/form_a_page1.pdf";
+  auditState.fileName = "form_a_page1.pdf";
+  if (dom.auditFilePath) {
+    dom.auditFilePath.textContent = "ecas-automation/data/audit/form_a_page1.pdf";
+  }
+  if (dom.auditPreviewFrame) {
+    dom.auditPreviewFrame.src = demoPath;
+  }
+}
+
+function setupAuditAssistant() {
+  if (!dom.auditScreens || !dom.auditScreens.length) {
+    return;
+  }
+  setAuditScreen("audit-screen-welcome");
+
+  if (dom.auditStartBtn) {
+    dom.auditStartBtn.addEventListener("click", () => {
+      setAuditScreen("audit-screen-upload");
+    });
+  }
+
+  if (dom.auditFileInput) {
+    dom.auditFileInput.addEventListener("change", event => {
+      const target = event.target;
+      const file = target && target.files && target.files[0] ? target.files[0] : null;
+      if (!file) {
+        return;
+      }
+      setAuditFile(file);
+    });
+  }
+
+  if (dom.auditDropzone) {
+    dom.auditDropzone.addEventListener("dragover", event => {
+      event.preventDefault();
+      dom.auditDropzone.classList.add("drag-over");
+    });
+    dom.auditDropzone.addEventListener("dragleave", () => {
+      dom.auditDropzone.classList.remove("drag-over");
+    });
+    dom.auditDropzone.addEventListener("drop", event => {
+      event.preventDefault();
+      dom.auditDropzone.classList.remove("drag-over");
+      const file = event.dataTransfer?.files?.[0];
+      if (!file) {
+        return;
+      }
+      setAuditFile(file);
+    });
+  }
+
+  if (dom.auditLoadDemoBtn) {
+    dom.auditLoadDemoBtn.addEventListener("click", () => {
+      setAuditDemoFile();
+    });
+  }
+
+  if (dom.auditExtractBtn) {
+    dom.auditExtractBtn.addEventListener("click", () => {
+      if (!auditState.fileName && !dom.auditFilePath?.textContent?.includes("form_a_page1.pdf")) {
+        alert("Upload a scan/PDF first (or click Use Demo ECAS Form).");
+        return;
+      }
+      if (dom.auditFilePath?.textContent?.includes("form_a_page1.pdf") && dom.auditPreviewFrame && !dom.auditPreviewFrame.src) {
+        dom.auditPreviewFrame.src = "data/audit/form_a_page1.pdf";
+      }
+      setAuditScreen("audit-screen-processing");
+      auditState.extractionRan = true;
+      if (dom.auditExtractionStatus) {
+        dom.auditExtractionStatus.textContent = "Running extraction...";
+      }
+      window.setTimeout(() => {
+        if (dom.auditExtractionStatus) {
+          dom.auditExtractionStatus.textContent = "Extraction complete. Review and edit extracted responses.";
+        }
+        const dummyNamingResponses = ["scorpion", "ribbon", "helicopter", "coyote", "hatchet", "mouse", "swan", "accordian"];
+        const dummyNamingScores = ["1", "1", "1", "1", "1", "1", "1", "1"];
+        const namingRows = getAuditNamingRows();
+        namingRows.forEach((row, idx) => {
+          if (row.responseInput) {
+            row.responseInput.value = dummyNamingResponses[idx] || "";
+          }
+          if (row.scoreInput) {
+            row.scoreInput.value = dummyNamingScores[idx] || "";
+          }
+        });
+        const dummyCompResponses = ["helicopter", "swan", "mouse", "axe", "helicopter", "axe", "scorpion", "mouse"];
+        const dummyCompScores = ["1", "1", "1", "1", "1", "1", "1", "1"];
+        const rows = getAuditComprehensionRows();
+        rows.forEach((row, idx) => {
+          if (row.responseInput) {
+            row.responseInput.value = dummyCompResponses[idx] || "";
+          }
+          if (row.scoreInput) {
+            row.scoreInput.value = dummyCompScores[idx] || "";
+          }
+        });
+        const namingTotal = dummyNamingScores.reduce((sum, score) => sum + (parseAuditScoreValue(score) || 0), 0);
+        const compTotal = dummyCompScores.reduce((sum, score) => sum + (parseAuditScoreValue(score) || 0), 0);
+        if (dom.auditNamingTotalScore) {
+          dom.auditNamingTotalScore.value = String(namingTotal);
+        }
+        if (dom.auditCompTotalScore) {
+          dom.auditCompTotalScore.value = String(compTotal);
+        }
+        setAuditScreen("audit-screen-review");
+      }, 1000);
+    });
+  }
+
+  if (dom.auditFinalizeBtn) {
+    dom.auditFinalizeBtn.addEventListener("click", () => {
+      setAuditScreen("audit-screen-run");
+      if (dom.auditQCResults) {
+        dom.auditQCResults.classList.add("hidden");
+      }
+      if (dom.auditReportCard) {
+        dom.auditReportCard.classList.add("hidden");
+      }
+      setAuditSubtestStatus(dom.auditNamingStatus, false);
+      setAuditSubtestStatus(dom.auditCompStatus, false);
+      if (dom.auditNamingStatus) {
+        dom.auditNamingStatus.textContent = "";
+      }
+      if (dom.auditCompStatus) {
+        dom.auditCompStatus.textContent = "";
+      }
+      if (dom.auditReportOutput) {
+        dom.auditReportOutput.textContent = "Run AI Assistant to generate the audit report.";
+      }
+    });
+  }
+
+  if (dom.auditRunBtn) {
+    dom.auditRunBtn.addEventListener("click", () => {
+      const rows = getAuditComprehensionRows();
+      const namingRows = getAuditNamingRows();
+      const findings = [];
+      const notes = [];
+      let namingHasIssues = false;
+      let compHasIssues = false;
+      let summedNamingTotal = 0;
+      let summedCompTotal = 0;
+      namingRows.forEach((row, idx) => {
+        const response = row.responseInput ? row.responseInput.value.trim() : "";
+        const score = row.scoreInput ? row.scoreInput.value.trim() : "";
+        if (!response) {
+          namingHasIssues = true;
+          findings.push({
+            section: "naming",
+            title: `Naming item ${idx + 1}: Missing response`,
+            detail: `${row.prompt} has no extracted participant response.`,
+            todo: "Review the paper form and enter the participant response."
+          });
+        }
+        if (!score) {
+          namingHasIssues = true;
+          findings.push({
+            section: "naming",
+            title: `Naming item ${idx + 1}: Missing extracted score`,
+            detail: `${row.prompt} has no extracted score.`,
+            todo: "Enter the extracted score from the paper form."
+          });
+        }
+        summedNamingTotal += parseAuditScoreValue(score) || 0;
+      });
+      rows.forEach((row, idx) => {
+        const response = row.responseInput ? row.responseInput.value.trim() : "";
+        const score = row.scoreInput ? row.scoreInput.value.trim() : "";
+        if (!response) {
+          compHasIssues = true;
+          findings.push({
+            section: "comprehension",
+            title: `Comprehension item ${idx + 1}: Missing response`,
+            detail: `${row.prompt} has no extracted participant response.`,
+            todo: "Review the paper form and enter the participant response."
+          });
+        }
+        if (!score) {
+          compHasIssues = true;
+          findings.push({
+            section: "comprehension",
+            title: `Comprehension item ${idx + 1}: Missing extracted score`,
+            detail: `${row.prompt} has no extracted score.`,
+            todo: "Enter the extracted score from the paper form."
+          });
+        }
+        summedCompTotal += parseAuditScoreValue(score) || 0;
+      });
+
+      const namingCopilot = scoreAuditNamingWithCopilot(namingRows);
+      const compCopilot = scoreAuditComprehensionWithCopilot(rows, namingCopilot);
+      const namingCopilotTotal = namingCopilot.reduce((sum, row) => sum + row.copilotScore, 0);
+      const compCopilotTotal = compCopilot.reduce((sum, row) => sum + row.copilotScore, 0);
+      renderAuditQCTable(dom.auditQCNamingBody, namingCopilot, row => row.label || `Naming ${row.idx + 1}`);
+      renderAuditQCTable(dom.auditQCCompBody, compCopilot, row => row.expectedLabel || row.prompt || `Comprehension ${row.idx + 1}`);
+
+      namingCopilot.forEach(row => {
+        if (row.extractedScore !== null && row.extractedScore !== row.copilotScore) {
+          namingHasIssues = true;
+          findings.push({
+            section: "naming",
+            title: `Naming item ${row.idx + 1}: Score mismatch`,
+            detail: `${row.label} is extracted as ${row.extractedScore}, but AI QC scored it ${row.copilotScore}.`,
+            todo: "Check the response against naming rules and update the extracted score if needed."
+          });
+        }
+      });
+      compCopilot.forEach(row => {
+        if (row.extractedScore !== null && row.extractedScore !== row.copilotScore) {
+          compHasIssues = true;
+          findings.push({
+            section: "comprehension",
+            title: `Comprehension item ${row.idx + 1}: Score mismatch`,
+            detail: `${row.prompt} is extracted as ${row.extractedScore}, but AI QC scored it ${row.copilotScore}.`,
+            todo: "Check the response against comprehension rules and update the extracted score if needed."
+          });
+        }
+        if (row.aliasNote) {
+          notes.push(`Comprehension item ${row.idx + 1}: ${row.aliasNote}.`);
+        }
+      });
+
+      const extractedNamingTotalText = dom.auditNamingTotalScore ? dom.auditNamingTotalScore.value.trim() : "";
+      const extractedNamingTotal = parseAuditScoreValue(extractedNamingTotalText);
+      if (!extractedNamingTotalText) {
+        namingHasIssues = true;
+        findings.push({
+          section: "naming",
+          title: "Naming total: Missing extracted total",
+          detail: "Extracted Naming Total Score is empty.",
+          todo: "Enter the naming total from the paper form."
+        });
+      } else if (extractedNamingTotal === null) {
+        namingHasIssues = true;
+        findings.push({
+          section: "naming",
+          title: "Naming total: Invalid extracted total",
+          detail: `Extracted Naming Total Score '${extractedNamingTotalText}' is not numeric.`,
+          todo: "Replace with a valid numeric total."
+        });
+      } else if (extractedNamingTotal !== summedNamingTotal) {
+        namingHasIssues = true;
+        findings.push({
+          section: "naming",
+          title: "Naming total: Total mismatch",
+          detail: `Extracted total is ${extractedNamingTotal}, but item-level extracted scores sum to ${summedNamingTotal}.`,
+          todo: "Reconcile item-level naming scores and update the total."
+        });
+      }
+      const extractedCompTotalText = dom.auditCompTotalScore ? dom.auditCompTotalScore.value.trim() : "";
+      const extractedCompTotal = parseAuditScoreValue(extractedCompTotalText);
+      if (!extractedCompTotalText) {
+        compHasIssues = true;
+        findings.push({
+          section: "comprehension",
+          title: "Comprehension total: Missing extracted total",
+          detail: "Extracted Comprehension Total Score is empty.",
+          todo: "Enter the comprehension total from the paper form."
+        });
+      } else if (extractedCompTotal === null) {
+        compHasIssues = true;
+        findings.push({
+          section: "comprehension",
+          title: "Comprehension total: Invalid extracted total",
+          detail: `Extracted Comprehension Total Score '${extractedCompTotalText}' is not numeric.`,
+          todo: "Replace with a valid numeric total."
+        });
+      } else if (extractedCompTotal !== summedCompTotal) {
+        compHasIssues = true;
+        findings.push({
+          section: "comprehension",
+          title: "Comprehension total: Total mismatch",
+          detail: `Extracted total is ${extractedCompTotal}, but item-level extracted scores sum to ${summedCompTotal}.`,
+          todo: "Reconcile item-level comprehension scores and update the total."
+        });
+      }
+      if (dom.auditQCResults) {
+        dom.auditQCResults.classList.remove("hidden");
+      }
+      if (dom.auditReportCard) {
+        dom.auditReportCard.classList.remove("hidden");
+      }
+      setAuditSubtestStatus(dom.auditNamingStatus, namingHasIssues);
+      setAuditSubtestStatus(dom.auditCompStatus, compHasIssues);
+      auditState.scoringRan = true;
+      renderAuditReport({
+        findings,
+        notes
+      });
+    });
+  }
 }
 
 function getPromptValue(kind) {
