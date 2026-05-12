@@ -1,6 +1,9 @@
 You are segmenting the ECAS Spoken Spelling Accuracy task.
 
-The clinician reads target words aloud one at a time and the participant spells each word aloud.
+In this task, the clinician reads target words aloud one at a time, and the participant responds by spelling each word aloud.
+The transcript is generated from speech-to-text and may contain both the clinician's prompts and the participant's spoken spellings.
+
+Spelled responses are often transcribed with hyphens between letters (e.g., "E-N-V-E-L-O-P-E") rather than with spaces.
 Your job is to take one full messy speech-to-text transcript containing both the clinician's prompts and the participant's spoken spellings, then extract the participant's raw spelled response for each target word in order.
 
 The target words for this task are:
@@ -21,6 +24,7 @@ Rules:
 - Ignore the clinician's spoken prompt word as much as possible and extract only the participant's spoken spelling.
 - Preserve the participant's raw spelling exactly as much as possible. Do NOT auto-correct, normalize, or improve the spelling.
 - Keep the raw sequence of letters/words as spoken. If the participant spells something incorrectly, preserve the incorrect spelling.
+- Spelled responses may appear with hyphens between letters (e.g., "E-N-V-E-L-O-P-E"), spaces between letters (e.g., "e n v e l o p e"), or as a combination of both. Preserve the format exactly as it appears in the transcript.
 - Use the known target-word list as context to identify which spelling belongs to which item, but do not "fix" the participant's spelling to match the target.
 - If there is clarification/back-and-forth for a target word, keep the FINAL committed spelling for that target (not earlier abandoned attempts).
 - Ignore conversational scaffolding such as "wait did you mean...", "like...", "as in...", "oh okay".
@@ -28,7 +32,7 @@ Rules:
 - Return one item for each target word in the exact same order as provided.
 - If there is not enough evidence for a word, return an empty response.
 
-Worked example:
+Worked example #1:
 
 If the raw transcript is:
 "okay I'm going to spell give you a bunch of different words and you're going to spell that for me okay envelope e n v e l o p e skateboard s k a t b o a r d constructing c o n t r u c t i n g partner p a r t n e r biscuit biscuit lawn mower l a w n m o wer deliver d e l i e v e r recorded r e c o r d i d"
@@ -49,6 +53,37 @@ Notice:
 - Do not change "d e l i e v e r" to "d e l i v e r".
 - Do not change "r e c o r d i d" to "r e c o r d e d".
 - If the participant just says the whole word, like "biscuit", preserve that raw response as "biscuit".
+
+
+Worked example #2:
+
+If the raw transcript is:
+"Okay, so I'm going to give you some spelling tasks and I'm going to ask you to spell them. Does that make sense? Yes. So I'm going to give you a word, you're just going to spell it. All right, so the first word is envelope. E-N-V-E-L-O-P-E. The next word is skateboard. S-K-A-T-B-O-R-D. The next word is constructing. C-O-N-S-T-R-U-T-N-G. Partner. P-A-R-T-N-E-R. Biscuit. B-I-S-C-U-T. Lawnmower. L-O-W-N-M-O-W-E-R. Deliver. D-E-L-I-V-R. Recorded. R-E-C-O-R-D-I-D. Coat hanger. C-O-A-T-H-A-N-G-E-R. Orchestra. O-R-C-H-E-S-T-R-A. Screwdriver. S-C-R-E-W-D-R-I-V-E-R. Brought. Brought? Brought as in like I brought you something. B-R-O-U-G-H-T."
+
+Then the extracted responses should be:
+
+ENVELOPE -> "E-N-V-E-L-O-P-E"
+SKATEBOARD -> "S-K-A-T-B-O-R-D"
+CONSTRUCTING -> "C-O-N-S-T-R-U-T-N-G"
+PARTNER -> "P-A-R-T-N-E-R"
+BISCUIT -> "B-I-S-C-U-T"
+LAWNMOWER -> "L-O-W-N-M-O-W-E-R"
+DELIVER -> "D-E-L-I-V-R"
+RECORDED -> "R-E-C-O-R-D-I-D"
+COATHANGER -> "C-O-A-T-H-A-N-G-E-R"
+ORCHESTRA -> "O-R-C-H-E-S-T-R-A"
+SCREWDRIVER -> "S-C-R-E-W-D-R-I-V-E-R"
+BROUGHT -> "B-R-O-U-G-H-T"
+
+Notice:
+
+Preserve hyphenated spelling exactly as it appears.
+Do not change "S-K-A-T-B-O-R-D" to "S-K-A-T-E-B-O-A-R-D".
+Do not change "C-O-N-S-T-R-U-T-N-G" to "C-O-N-S-T-R-U-C-T-I-N-G".
+Do not change "B-I-S-C-U-T" to "B-I-S-C-U-I-T".
+Do not change "D-E-L-I-V-R" to "D-E-L-I-V-E-R".
+Do not change "R-E-C-O-R-D-I-D" to "R-E-C-O-R-D-E-D".
+For BROUGHT, ignore the clarification dialogue and keep only the final spelling "B-R-O-U-G-H-T".
 
 Additional few-shot examples:
 
